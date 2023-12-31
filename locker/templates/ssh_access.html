@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}SSH Access{% endblock %}
+
+{% block main %}
+
+
+<div class="container text-center">
+  <h1 class="jumbotron-heading">SSH Access to container</h1>
+  <p class="lead">To SSH into your container for terminal/command line access you will need to use an SSH client on the machine you are browsing from. If that machine is a Mac or Linux, then the SSH client is built-in and you can just directly use it. On Windows, you will need to download and install an SSH client, and most people use <a href='http://putty.org'>PuTTy</a>. You would then make the SSH connection using these parameters:<p class="lead"><b>User</b>: {{ ssh_info.user }}, <b>Host</b>: {{ ssh_info.host }}, <b>Port</b>: {{ ssh_info.port }}<p class="lead">You might also need to specify additional values StrictHostKeyChecking=no and UserKnownHostsFile=/dev/null to get the SSH connection to work without errors/warnings. Also, if your private key is in a non-standard location (i.e. not at ~/.ssh/id_rsa) then you'll need to specify its location in the SSH command with the -i flag. On Mac or Linux, here is the specific SSH command you can run to connect to the container:<p class="lead">
+
+<code>ssh -i PRIV_KEY_FILE -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {{ ssh_info.user }}@{{ ssh_info.host }} -p {{ ssh_info.port }}</code>
+<p class="lead">On Windows you could <a href="https://www.ssh.com/ssh/putty/windows/">configure</a> a similar connection in PuTTy. You can try to click this <a href="ssh://{{ ssh_info.user }}@{{ ssh_info.host }}:{{ ssh_info.port }}">SSH web link</a> to open up an SSH connection (should work on Mac/Linux); if it doesn't work then you'll need to just run the SSH command given above.
+</div>
+
+
+{% endblock %}

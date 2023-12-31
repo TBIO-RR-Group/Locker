@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}Pulling Image{% endblock %}
+
+{% block main %}
+
+<script>
+(function progress_updater() {
+  $.ajax({
+    url: '/get-pull-progress?image={{ image }}', 
+    success: function(data) {
+      $('#pull_progress').html(data);
+    },
+    complete: function() {
+      // Schedule the next request when the current one's complete
+      setTimeout(progress_updater);
+    }
+  });
+})();
+</script>
+
+<center><h3>Pulling Image '{{ image }}'</h3></center>
+
+<p>The image is currently being pulled and you can follow the pull progress below. Please do not exit the application until the image has been completely pulled, otherwise the pull will fail. You can navigate away from this page, however, and later check the status of the pull anytime by clicking the "Pulling" link corresponding to the image in the 'Pulling?' column of the <a href="{{ url_for('images') }}">images page</a>.
+
+<pre id='pull_progress'>
+</pre>
+
+{% endblock %}

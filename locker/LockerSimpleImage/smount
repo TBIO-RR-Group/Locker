@@ -1,0 +1,255 @@
+#!/usr/bin/env python3
+
+# smount.py
+# Mount a filesystem using SSHFS
+# MFR 5/30/2018
+
+import os, os.path, subprocess, argparse, re, pwd, grp
+
+# --- global settings
+version = "0.4.0"
+verbose = None
+
+def log(msg):
+    if verbose: print(msg)
+
+# Mount remote at mount_point using key at idfilepath
+def smount(mount_point, remote, idpath, password, login):
+
+    # If mount_point is a symlink, we're done.
+    log("Checking that {} is not a symlink...".format(mount_point))
+    if os.path.islink(mount_point):
+        msg = '{} is an existing symlink. Cannot proceed.'.format(mount_point)
+        log('...' + msg)
+        return {'success':False, 'msg': msg }
+    else:
+        log("...Okay")
+    
+    # Make sure we have a full absolute path
+    log("Computing absolute path for {}...".format(mount_point))
+    try:
+        mount_point = os.path.abspath(mount_point)
+        log("... Computed absolute path as {}".format(mount_point))
+    except Exception as ex:
+        msg = "Error {0}".format(str(ex.args[0])).encode("utf-8")
+        log('...' + msg)
+        return {'success':False, 'msg': msg }
+    
+    # If mount_point is a file, something is wrong.
+    log("Checking suitability of {} as a mount point...".format(mount_point))
+    if os.path.isfile(mount_point):
+        msg = '{} is a file. It should be a directory.'.format(mount_point)
+        log('...' + msg)
+        return {'success':False, 'msg': msg }
+
+    # If mount_point is a non-empty directory and not a mount point, something is wrong. An empty directory is fine.
+    elif os.path.isdir(mount_point) and not os.path.ismount(mount_point) and len(os.listdir(mount_point)) > 0:
+        msg = '{} is a non-empty directory and not already a mount point.'.format(mount_point)
+        log('...' + msg)
+        return {'success':False, 'msg': msg }
+
+    # If mount_point is a mounted directory, try to unmount it. If can't unmount, fail.
+    elif os.path.isdir(mount_point) and os.path.ismount(mount_point):
+        cmds = ['sudo', 'umount', mount_point]
+        log("...{} is an exisitng mount point. Executing '{}'...".format(mount_point, ' '.join(cmds)))
+        cp = subprocess.run(cmds)
+        if cp.returncode != 0:
+            msg = 'Failed to unmount {}'.format(mount_point)
+            log('...' + msg)
+            return {'success':False, 'msg': msg }
+        else:
+            log("...Successfully unmounted existing mount at {}".format(mount_point))
+    
+    else:
+        log("...Okay")
+        
+    # mount_point does not exist - create a directory
+    log("Verifying that mount point exists at {}...".format(mount_point))
+    if not os.path.exists(mount_point):
+        log("...{} does not exist. Trying to create it.".format(mount_point))
+        cp = subprocess.run(['sudo', 'mkdir', '-p', mount_point])
+        if cp.returncode != 0: 
+            msg = 'Failed to create {}'.format(mount_point)
+            log('...' + msg)
+            return {'success':False, 'msg': msg }
+        else:
+            log('...Successfully created {}'.format(mount_point))
+    else:
+        log("...Okay")
+    
+    uid = os.getuid()
+    gid = os.getgid()
+    uid_name=pwd.getpwuid(uid).pw_name
+    gid_name=grp.getgrgid(gid).gr_name
+    owner_group='{}:{}'.format(uid_name,gid_name)
+        
+    # Chown directory to current user
+    log("Changing ownership of mount point at {} to {}".format(mount_point,owner_group))
+    if os.path.exists(mount_point):
+        cp = subprocess.run(['sudo', 'chown', '-R', owner_group, mount_point])
+        if cp.returncode != 0: 
+            msg = 'Failed to change ownership of {} to {}'.format(mount_point,owner_group)
+            log('...' + msg)
+            return {'success':False, 'msg': msg }
+        else:
+            log('...Successfully changed ownership of {} to {}'.format(mount_point,owner_group))
+    
+    else:
+        log("...{} does not exist".format(mount_point))
+    
+    # At this point mount_point should be an empty unmounted directory owned by current user. Proceed to mount it.
+
+    # Decide how to connect. Four options:
+    # 1. If password provided, log in using given username:password
+    # 2. If idpath provided, pass that to sshfs command
+    # 3. If DKEY set and login is not True, generate id_rsa and try to mount
+    # 4. If .ssh/id_stash.pri.bms.com exists, use that as private key
+    # 5. If none of the above, ask user for password
+    
+    try:
+
+        # Set and prebuild paths
+        sshpath       = '/home/{}/.ssh'.format(uid_name)
+        dkey_idpath   = os.path.join(sshpath, 'id_rsa')
+        ##biogit_idpath = os.path.join(sshpath, 'id_biogit.pri.bms.com')
+
+        ## we will collect all ssh keys and try to mount stash, 
+        ## this will help to make the script generic irrespective of private key filename 
+        ## check if there are any private key files in .ssh folder
+        ## if none, we don't use private key authentication
+        mountWithPrivKey = False
+        privateKeyFileList = list()
+        if os.path.isdir(sshpath):
+          dirList = os.listdir(sshpath)
+          for fname in dirList:
+            filename = os.path.join(sshpath, fname)
+            if os.path.isfile(filename):
+                with open(filename, 'r') as f:
+                    if 'PRIVATE KEY-' in f.read():
+                        privateKeyFileList.append(filename)
+
+        # Build commands based on the options provided
+        if password:
+            cmds = ['echo', password, '|', 'sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'StrictHostKeyChecking=no', '-o', 'password_stdin', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+            cmd = ' '.join(cmds)
+            
+            # If verbose output, don't show user password
+            vcmds = ['echo <password>  |', 'sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'StrictHostKeyChecking=no', '-o', 'password_stdin', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+            log( "Executing '{}'".format( ' '.join(vcmds) ) )
+
+        elif idpath:
+            cmds = ['sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'IdentityFile={}'.format(idpath), '-o', 'StrictHostKeyChecking=no', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+            cmd = ' '.join(cmds)
+            log( "Executing '{}'".format( cmd ) )
+        
+        elif 'DKEY' in os.environ and not login:
+            log('Setting value of environment variable DKEY as private ssh key')
+            skey    = os.environ['DKEY']
+            skey    = skey.strip()
+            
+            # Strip bounding lines, in case they were included
+            head = '-----BEGIN RSA PRIVATE KEY-----'
+            tail = '-----END RSA PRIVATE KEY-----'
+            if skey.startswith(head): skey = skey[len(head):]
+            if skey.endswith(tail):   skey = skey[:(len(skey) - len(tail))]
+            skey   = skey.strip()
+            
+            # Make sure .ssh directory exists
+            os.makedirs(sshpath, mode=0o700, exist_ok=True)
+            
+            # Write private key
+            lines  = re.split('[^a-zA-Z0-9=\+\/]+', skey)   # Split on chars not found on RSA key (base 64-encoded)
+            with open(dkey_idpath, 'w') as fp:
+                fp.write(head + '\n')
+                for line in lines: fp.write(line + '\n')
+                fp.write(tail + '\n')
+            os.chmod(dkey_idpath, 0o600)
+            
+            cmds = ['sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'IdentityFile={}'.format(dkey_idpath), '-o', 'StrictHostKeyChecking=no', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+            cmd = ' '.join(cmds)
+            log( "Executing '{}'".format( cmd ) )
+        
+        ##elif os.path.exists(biogit_idpath) and not login:
+        elif len(privateKeyFileList)>0 and not login:
+            mountWithPrivKey = True
+            mounted = False
+            for privateKeyFile in privateKeyFileList:
+                log('Using {} as private ssh key'.format(privateKeyFile))
+                cmds = ['sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'IdentityFile={}'.format(privateKeyFile), '-o', 'StrictHostKeyChecking=no', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+                cmd = ' '.join(cmds)
+                log("Executing '{}'".format(cmd) )
+                subprocess.call(cmd, shell=True)
+                if (len(os.listdir(mount_point))>0):
+                    mounted = True
+                    msg = 'Mounted {} at {}'.format(remote, mount_point)
+                    break
+            if not mounted:
+                msg = f'Mount not successful - {remote} at {mount_point}. Any of the private key in {sshpath} did not work.'
+            
+        else:
+            cmds = ['sudo', 'sshfs', remote, mount_point, '-o', 'uid={}'.format(uid), '-o', 'gid={}'.format(gid), '-o', 'allow_other', '-o', 'StrictHostKeyChecking=no', '-o', 'ServerAliveInterval=60', '-o', 'ServerAliveCountMax=3' ]
+            cmd = ' '.join(cmds)
+            log( "Executing '{}'".format( cmd ) )
+    
+        ## execute below only if there is no attempt to mount using private key
+        if not mountWithPrivKey:
+            subprocess.call(cmd, shell=True)
+            if (len(os.listdir(mount_point))>0):
+                msg = 'Mounted {} at {}'.format(remote, mount_point)
+            else:
+                msg = 'Mount not successful - {} at {}'.format(remote, mount_point)
+
+    except Exception as ex:
+        msg = "Error {0}".format(str(ex.args[0])).encode("utf-8")
+        log('...' + msg)
+        return {'success':False, 'msg': msg }
+    
+    # Result
+    return {'success':True, 'msg': msg }
+
+# --- Main
+if __name__ == '__main__':
+    
+    # Create defaults
+    mpoint   = '/stash'
+    username = os.environ.get('LOCKER_STARTING_USERNAME', os.environ.get('LOCKER_PROJECT_OWNER', os.environ.get('USERNAME')))
+    remote   = '{}@stash.pri.bms.com:/stash'.format(username)
+    #workdir  = os.environ.get('LOCKER_WORKING_DIR', '/mnt/{}'.format(username))
+    #idpath = '{}/.bms/ssh/id_rsa'.format(workdir)
+    
+    # help text
+    help_mpoint    = 'Path to mount point. (Default {})'.format(mpoint)
+    help_remote    = 'Full remote mount spec, e.g. username@my.domain.com:/path/to/filesystem (Default {})'.format(remote)
+    help_idpath    = 'Full path to ssh private key file. (Default None)'
+    help_login     = 'Force the use of provided credentials for authentication. (Default None)'
+    help_username  = 'Username on the remote machine. (Default {})'.format(username)
+    help_password  = 'Password for the user on the remote machine. If provided, idpath is ignored.'
+    help_verbose   = 'Enable verbose output.'
+    help_version   = 'Print smount version'
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mountpoint", dest="mount_point", default=mpoint,   help=help_mpoint)
+    parser.add_argument("-r", "--remote",     dest="remote",      default=remote,   help=help_remote)
+    parser.add_argument("-i", "--idpath",     dest="idpath",      default=None,     help=help_idpath)
+    parser.add_argument("-u", "--username",   dest="username",    default=None,     help=help_username)
+    parser.add_argument("-p", "--password",   dest="password",    default=None,     help=help_password)
+    parser.add_argument("-l", "--login",      dest="login",       default=None,     help=help_login,      action="store_true")
+    parser.add_argument("-v", "--verbose",    dest='verbose',     default=None,     help=help_verbose,    action="store_true")
+    parser.add_argument("-V", "--version",    dest='version',     default=None,     help=help_version,    action="store_true")
+    
+    args = parser.parse_args()
+    
+    if args.version:
+        print( 'smount version {}'.format(version) )
+        
+    else:
+        # Transfer verbose value to global flag
+        verbose = args.verbose
+        
+        # If username is provided, update remote
+        remote = args.remote
+        if args.username: remote = '{}@stash.pri.bms.com:/stash'.format(args.username)
+        
+        # Attempt the mount
+        result = smount(args.mount_point, remote, args.idpath, args.password, args.login)
+        print( result['msg'] )

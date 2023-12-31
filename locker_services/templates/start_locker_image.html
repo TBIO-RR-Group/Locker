@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}Start Locker{% endblock %}
+
+{% block main %}
+
+<center><h3>Start Locker on a Linux Server (assumes Docker already installed and available)</h3></center>
+
+<button class="btn btn-xs btn-default" id="saveform" onclick="saveFormData('start_locker_image');">Save Form</button>
+<button class="btn btn-xs btn-default" id="saveform" onclick="restoreFormData('start_locker_image');">Restore Form</button><p>
+<form action="locker.cgi" method=POST enctype="multipart/form-data" onsubmit="showSpinner();" id="start_locker_image">
+  <div class="form-group">
+    <label id="config_server_username_label">Server Username (account to use to setup Locker on the server, can be same as Locker Username; use '{{ config.ami_user }}' for restarting Locker on servers started by Locker Services):</label>
+    <input type="text" class="form-control" name="config_server_username" id="config_server_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_hostip_label">Server Hostname or IP address:</label>
+    <input type="text" class="form-control" name="config_hostip" id="config_hostip" value="{{ config.config_hostip }}"></input>
+  </div>
+  <div class="form-group">
+    <label for="password">Server Password</label><span style="font-size:x-small;">&nbsp;(Note: use of password instead of SSH private key if possible is strongly recommended)</span>
+    <input type="password" class="form-control" id="password" name="password" placeholder="Password">
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_label">Or Server SSH Private Key:</label><br>
+      <textarea id="config_sshprivkey" name="config_sshprivkey" class="form-control"></textarea>
+  </div>
+  <div class="form-group">
+    <label id="config_locker_homedir_label">Home Directory at Server (default ~/ for Server Username):</label>
+    <input type="text" class="form-control" name="config_locker_homedir" id="config_locker_homedir" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_pull_latest_locker_image_label" class="checkbox-inline">Pull latest Locker image?
+    <input type="checkbox" name="config_pull_latest_locker_image" id="config_pull_latest_locker_image"></input></label>
+  </div>
+  <div class="form-group">
+    <label id="config_locker_username_label">Locker Username (Locker and RStudio, VScode, Jupyter, and Jupyterlab sessions will be accessible to this username):</label>
+    <input type="text" class="form-control" name="config_locker_username" id="config_locker_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_locker_label">Locker SSH Private Key (keypair used to SSH as the '{{config.container_user}}' user into started containers, and mount /stash and home directory):</label><br>
+      <textarea id="config_sshprivkey_locker" name="config_sshprivkey_locker" class="form-control"></textarea>
+  </div>
+  <div class="form-group">
+    <label id="config_sshpubkey_locker_label">Locker SSH Public Key (keypair used to SSH as the '{{config.container_user}}' user into started containers, and mount /stash and home directory):</label><br>
+      <textarea id="config_sshpubkey_locker" name="config_sshpubkey_locker" class="form-control"></textarea>
+  </div>
+  <span style="display:none"><!-- remove this span to show and enable users to be able to access ECR (in addition to our Docker registry) -->
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+  <div class="checkbox">
+    <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
+  </div>
+  </span>
+  <button type="submit" class="btn btn-default" name="start_btn" id="start_btn" value="set">Start Locker</button>
+  <input type="hidden" name="a" value="start_locker_image" />
+  <input type="hidden" name="stage" value="exec" />
+  <input type="hidden" name="devtest" value="{{ config.devtest }}" />
+</form>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   setPageButton('start_locker_image_btn');
+
+});
+
+</script>
+
+
+{% endblock %}

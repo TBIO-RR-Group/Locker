@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Results/Messages{% endblock %}
+
+{% block main %}
+
+<center><h1>Results/Messages</h1></center>
+<pre>
+{{config.msg}}
+</pre>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   if (!isEmpty('{{config.config_btn}}')) {
+      setPageButton('{{config.config_btn}}');
+   }
+
+   hideSpinner();
+
+});
+
+</script>
+
+
+{% endblock %}

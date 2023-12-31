@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Configure Local Caching of Network Drive Content{% endblock %}
+
+{% block main %}
+
+<center><h3>Configure Local Caching of Network Drive Content</h3><h5>Please choose an image to use for local caching of network drive content</h5></center>
+
+<form action="offline-image-config" method=POST>
+  <div class="form-group">
+    <label for="main_app">Image</label>
+    <select class="form-control" name="imagetagid">
+  {% if config.images %}
+    {% for image in config.images %}
+      {% for full_tag in image.full_tags %}
+      <option value="{{ full_tag + "___" + image.id }}">{{ full_tag }}</option>
+      {% endfor %}
+    {% endfor %}
+  {% endif %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="main_app">Network Drive to Cache</label>
+    <select class="form-control" name="network_drive">
+  {% if config.sshfs_mounts %}
+    {% for cur_sshfs_mount in config.sshfs_mounts %}
+    <option value="{{ cur_sshfs_mount[1] }}">{{ cur_sshfs_mount[0] }}</option>
+    {% endfor %}
+  {% endif %}
+    </select>
+  </div>
+  <button type="submit" class="btn btn-default" onclick="showSpinner();">Start</button>
+</form>
+
+<script>
+
+   setPageButton('config_button');
+
+</script>
+
+{% endblock %}

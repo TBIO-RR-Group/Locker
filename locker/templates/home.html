@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Containers{% endblock %}
+
+{% block main %}
+
+<center><h3>Containers</h3><h6>Click on column headers to sort</h6></center>
+
+<div class="dropdown" style="float: left;">
+  <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Bulk Actions
+  <span class="caret"></span></button>
+  <ul class="dropdown-menu">
+    <li><a href="{{ url_for('all_containers_action') + '?action=stop' }}" onclick='if (confirm("Are you sure you want to stop all containers? You should consider stopping any RStudio, Jupyter, Jupyterlab, or VScode sessions first.")) { showSpinner(); return(true); } else { return false; }'>Stop All</a></li>
+    <li><a href="{{ url_for('all_containers_action') + '?action=restart' }}" onclick="showSpinner(); return true;">Restart All</a></li>
+    <li><a href="{{ url_for('all_containers_action') + '?action=terminate' }}" onclick='if (confirm("Are you sure you want to terminate all containers?")) { showSpinner(); return(true); } else { return false; }'>Terminate All</a></li>
+  </ul>
+</div>
+
+<table id="grid-containers" class="table table-condensed table-hover table-striped" style="table-layout: auto;">
+    <thead>
+        <tr>
+            <th data-column-id="id">ID</th>
+            <th data-column-id="name">Name</th>
+            <th data-column-id="start_time" data-formatter="start_time">Start Time</th>
+            <th data-column-id="image" data-formatter="image">Image</th>
+            <th data-column-id="state" data-formatter="state">State</th>
+            <th data-column-id="contActions" data-formatter="contActions">Container Actions</th>
+            <th data-column-id="commitCont" data-formatter="commitCont">Commit Container</th>
+            <th data-column-id="ssh">SSH</th>
+            <th data-column-id="main_app">Primary Application</th>
+            <th data-column-id="vscode">VSCode</th>
+        </tr>
+    </thead>
+    <tbody>
+  {% if info and info.containers %}
+    {% for container in info.containers %}
+        <tr>
+            <td>{{ container.short_id }}</td>
+            <td>{{ container.name }}</td>
+            <td>{{ container.attrs['State']['StartedAt'] }}</td>
+            <td>{{ container.image.tags[0] }}</td>
+            <td>{{ container.status }}</td>
+            <td>Container Actions</td>
+            <td>Commit</td>
+            <td>{{ container.sshLink }}</td>
+            <td>{{ container.mainAppLink }}</td>
+            <td>{{ container.vscodeLink }}</td>
+        </tr>
+    {% endfor %}
+  {% endif %}
+    </tbody>
+</table>
+
+<script>
+
+$(document).ready(function(){
+
+   setPageButton('home_button');
+
+   $("#grid-containers").bootgrid({
+                              "formatters": {
+                                           "contActions": function(column, row)
+                                            {
+					      var contState = row.state; var otherLink = "";
+                                              if (contState == 'running') {
+                                                 var link_ = "container-actions?actions=stop&container=" + row.id;
+                                                  otherLink = "&nbsp;|&nbsp;<a href='" + link_ + "' onclick='if (confirm(\"Are you sure you want to stop the container? You should consider stopping any RStudio, Jupyter, Jupyterlab, or VScode sessions first.\")) { showSpinner(); return(true); } else { return false; }'>Stop</a>";
+                                              } else if (contState == 'exited') {
+                                                 var link_ = "container-actions?actions=restart&container=" + row.id;
+                                                 otherLink = "&nbsp;|&nbsp;<a href='" + link_ + "' onclick='showSpinner(); return(true);'>Restart</a>";
+                                              }
+                                              var term_link_ = "container-actions?actions=stop,remove&container=" + row.id;
+					      var retVal = "<a href='" + term_link_ + "' onclick='if (confirm(\"Are you sure you want to terminate the container?\")) { showSpinner(); return(true); } else { return false; }'>Terminate</a>" + otherLink;
+					      return(retVal);
+                                           },
+                                           "commitCont": function(column, row)
+                                           {
+                                              var link_ = "commit-container-form?container=" + row.id;
+                                              return "<a href='" + link_ + "'>Commit</a>";
+                                           },
+                                           "state": function(column, row)
+                                           {
+                                              var contState = row.state;
+                                              return contState;
+                                           },
+                                           "start_time": function(column, row)
+                                           {
+                                              var d = new Date(row.start_time);
+                                              var date_format_str = d.getFullYear().toString()+"-"+((d.getMonth()+1).toString().length==2?(d.getMonth()+1).toString():"0"+(d.getMonth()+1).toString())+"-"+(d.getDate().toString().length==2?d.getDate().toString():"0"+d.getDate().toString())+" "+(d.getHours().toString().length==2?d.getHours().toString():"0"+d.getHours().toString())+":"+((parseInt(d.getMinutes()/5)*5).toString().length==2?(parseInt(d.getMinutes()/5)*5).toString():"0"+(parseInt(d.getMinutes()/5)*5).toString())+":00";
+console.log(date_format_str);
+
+                                              return date_format_str;
+                                           },
+                                           "image": function(column, row)
+                                           {
+                                              var shortTag = row.image.replace(/^.+\//,"");
+                                              return "<span title='" + row.image + "'>" + shortTag + "</span>";
+                                           }
+                              }
+
+})
+
+});
+
+</script>
+
+{% endblock %}

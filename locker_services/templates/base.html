@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Required meta tags -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+
+  <!-- jQuery Bootgrid CSS -->
+  <link rel="stylesheet" href="/static/jquery.bootgrid.min.css">
+
+  <!-- jQuery UI CSS -->
+  <link rel="stylesheet" href="/static/jquery-ui.css">
+  <link rel="stylesheet" href="/static/DockerLocal.css">
+
+  <link href="/static/select2.min.css" rel="stylesheet" />
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+  <title>{% block title %}{% endblock %}</title>
+
+  <script>
+
+    function saveFormData(formId) {
+       showSpinner();
+       formDataJson = $('#' + formId + ' [type!="hidden"]').serializeArray();
+       //Jquery's serializeArray does not handle unchecked checkboxes, so need to do this to add them:
+       var unchecked_serialized_cb = $('#' + formId + ' [type="checkbox"]:not(:checked)').map(function() {
+          formDataJson.push({ name: this.name, value: this.checked ? this.value : "false" });
+       });
+
+       localStorage.setItem(formId + "_SAVEFORMDATA", JSON.stringify(formDataJson));
+       hideSpinner();
+    }
+
+    function restoreFormData(formId) {
+       showSpinner();
+       savedFormDataJsonTxt = localStorage.getItem(formId + "_SAVEFORMDATA");
+       if (savedFormDataJsonTxt === null) { hideSpinner(); return; }
+       savedFormDataObj = JSON.parse(savedFormDataJsonTxt);
+       repopulateForm("#"+formId,savedFormDataObj);
+       hideSpinner();
+    }
+
+    function repopulateForm(form, formArray) {
+       formArray.forEach(function (pair) {
+          var selector = `input[name="${ pair.name }"], textarea[name="${ pair.name }"], select[name="${ pair.name }"]`
+          var input = $(form).find(selector)
+          if (typeof input != 'undefined') {
+             var inputType = input.attr('type');
+             if (!isBlank(inputType)) { inputType = inputType.toLowerCase(); }
+             var inputTagName = input.prop('tagName');
+             if (!isBlank(inputTagName)) { inputTagName = inputTagName.toLowerCase(); }
+             if (inputType == 'checkbox') {
+                if (pair.value == 'True') { input.prop('checked',true); } else { input.prop('checked',false); }
+             } else if (inputTagName == 'select') {
+                input.val(pair.value).change();
+             } else if (inputType != 'hidden') {
+                input.val(pair.value);
+            }
+          }
+       })
+    }
+
+    function isBlank(str) {
+       return (!str || /^\s*$/.test(str));
+    }
+
+    function setPageButton(on_button_id) {
+
+//       var allButtonIds = ['ec2_portal_btn', 'new_ec2_locker_btn', 'new_ec2_btn', 'start_docker_btn', 'start_locker_image_btn', 'download_locker_btn', 'other_toggle_btn'];
+//       for (var idx=0; idx<allButtonIds.length; idx++) {
+//          var curButtonId = allButtonIds[idx];
+//	  $('#' + curButtonId).attr('class','btn btn-primary');
+//       }
+//       $('#' + on_button_id).attr('class','btn btn-success');
+
+         $(".btn-success").removeClass('btn-success');
+         $('#' + on_button_id).addClass('btn-success');
+
+//      $("#new_ec2_btn").addClass('OTHER_OPTS');
+//      $("#start_docker_btn").addClass('OTHER_OPTS');
+//      $("#start_locker_image_btn").addClass('OTHER_OPTS');
+//      $("#download_locker_btn").addClass('OTHER_OPTS');
+
+//      if ((on_button_id == 'new_ec2_btn') || (on_button_id == 'start_docker_btn') || (on_button_id == 'start_locker_image_btn') || (on_button_id == 'download_locker_btn')) {
+      if ((on_button_id != 'ec2_portal_btn') && (on_button_id != 'new_ec2_locker_btn')) {
+         $(".OTHER_OPTS").show();
+         $("#other_toggle_btn").html('-');
+      }
+    }
+
+    function toggleShowHide(id) {
+
+       var x = document.getElementById(id);
+       var setTo = '';
+       if (x.style.display !== "none") {
+          x.style.display = "none";
+          setTo = '&nbsp;+';
+       } else {
+          x.style.display = "";
+          setTo = '&nbsp;-';
+       }
+
+       var x_clickon = document.getElementById(id + '_clickon');
+       if (x_clickon) {
+          x_clickon.innerHTML = setTo;
+       }
+
+    }
+
+  </script>
+</head>
+
+<body>
+
+<style>
+.navbar {
+    border: 0px;
+}
+.navbar-default {
+     background-color: white;
+}
+.navbar-brand {
+    padding: 10px;
+    height: 40px;
+}
+.nav>li>a:hover, .nav>li>a:focus {
+    text-decoration: none;
+    background-color: #bbb;
+}
+#exit_button {
+    float: right;
+    margin: 4px;
+}
+
+.locker_services_image { cursor:pointer; }
+</style>
+
+<nav class="navbar navbar-default">
+  <div class="container-fluid">
+    <ul class="nav nav-tabs">
+      <!-- See here: https://stackoverflow.com/questions/12912048/how-to-maintain-aspect-ratio-using-html-img-tag -->
+      <li><img class="locker_services_image" src="/static/logo_services.jpg" alt="Locker Services" style="max-width:64px;max-height:64px;width:auto;height:auto" onclick="document.location='locker.cgi';"></img></li>
+      <li><a id="ec2_portal_btn" class="btn btn-primary" href="locker.cgi?a=ec2_portal">Locker Server Portal</a></li>&nbsp;&nbsp;
+      <li><a id="new_ec2_locker_btn" class="btn btn-primary" href="locker.cgi?a=new_ec2_locker">Locker on New Server</a></li>&nbsp;&nbsp;
+      <li><a id="new_ec2_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=new_ec2">New Server</a></li>&nbsp;&nbsp;
+      <li><a id="start_docker_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=start_docker">Check&sol;Start Docker</a></li>&nbsp;&nbsp;
+      <li><a id="start_locker_image_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=start_locker_image">Start Locker</a></li>&nbsp;&nbsp;
+      <li><a id="download_locker_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="/download/">Download Locker&sol;Docs</a></li>&nbsp;&nbsp;
+      <li><a id="other_toggle_btn" class="btn btn-primary" href="#" onclick="toggleOtherOptions(); return false;">+</a></li>&nbsp;&nbsp;
+    </ul>
+  </div>
+</nav>
+
+  <!-- Optional JavaScript -->
+  <!-- jQuery first, then Bootstrap JS, then jQuery bootgrid -->
+  <script src="/static/jquery-1.11.1.min.js"></script>
+  <script src="/static/bootstrap.min.js"></script>
+  <script src="/static/jquery.bootgrid.min.js"></script>
+  <script src="/static/jquery.bootgrid.fa.js"></script>
+  <script src="/static/select2.min.js"></script><!-- Got here: https://select2.org/ -->
+
+  <script src="/static/jquery-ui.js"></script>
+
+  {% block main %}{% endblock %}
+
+<!--
+See here for where I got the simple Font Awesome-based spinner:
+https://stackoverflow.com/questions/14972451/popup-window-with-ajax-spinner-for-twitter-bootstrap
+-->
+
+<!-- CSS -->
+<style>
+    #spinner-modal .modal-dialog,
+    #spinner-modal .modal-content,
+    #spinner-modal .modal-body {
+        background: transparent;
+        color: rgba(255,255,255,1);
+        box-shadow: none;
+        border: none;
+    }
+</style>
+
+<!--[ SPINNER MODAL ]-->
+<div class="modal fade" id="spinner-modal">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <h3><i class="fa fa-5x fa-spin fa-spinner"></i> Working...</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSpinner() {
+
+   $('#spinner-modal').modal('show');
+
+}
+
+function hideSpinner() {
+
+   $('#spinner-modal').modal('hide');
+
+}
+
+function toggleOtherOptions() {
+
+      $(".OTHER_OPTS").toggle();
+
+      var otherToggleButtonChar = $("#other_toggle_btn").html();
+      if (otherToggleButtonChar == '+') { $("#other_toggle_btn").html('-'); } else { $("#other_toggle_btn").html('+'); }
+}
+</script>
+
+
+</body>
+
+</html>

@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Commit Container{% endblock %}
+
+{% block main %}
+
+<script type="text/javascript">
+//See here: https://stackoverflow.com/questions/39671641/regex-to-parse-docker-tag
+function checkLegalDockerTagVersion(formObj) {
+
+   var tagVersion = formObj.elements["commit_image_name"].value;
+
+   if (isBlank(tagVersion)) { return true; } //server will just set automatically in this case
+
+   if (tagVersion.length > 128) { alert("Error: image name must be 128 characters or less."); return false; }
+
+   var tagVersionRegex = new RegExp('^([A-Za-z0-9\_]([\-\.\_A-Za-z0-9])*)$');
+
+   if (tagVersionRegex.test(tagVersion)) { return true; }
+   else {
+      alert("Error: illegal characters in image name (only letters, numbers, .,-, and _ allowed)");
+      return false;
+   }
+
+}
+</script>
+
+<center><h3>Commit Container</h3></center>
+
+<form action="commit-container" method=POST onsubmit="showSpinner(); return checkLegalDockerTagVersion(this);">
+  <div class="form-group">
+    <label for="base_image_tag">Base Image</label>
+    <input type="text" class="form-control" id="base_image_tag" disabled value="{{commit_info.base_image_tag}}" />
+  </div>
+  <div class="form-group">
+    <label for="commit_image_name">New Image Name</label>
+    <input type="text" class="form-control" name="commit_image_name" id="commit_image_name" />
+  </div>
+  <div class="form-group">
+    <label for="commit_message">Commit Message (notes about the new image)</label>
+    <textarea class="form-control" name="commit_message"></textarea>
+  </div>
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="anonymize"> Anonymize? (i.e. reset container User's home dir to as in base image)</label>
+    </div>
+  </div>
+  <input type="hidden" name="container" value="{{commit_info.container}}" />
+  <button type="submit" class="btn btn-default">Commit</button>
+</form>
+
+{% endblock %}

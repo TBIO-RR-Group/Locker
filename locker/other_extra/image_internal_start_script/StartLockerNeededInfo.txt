@@ -1,0 +1,19 @@
+#needed inputs to start Locker script
+USABLE_PORTS=default ALL if not specified (otherwise comma separated list of available ports)
+PLATFORM=Mac,Linux,Win
+PROXY_ENV=proxy settings for your network (if needed)
+LOCKER_IMAGE='docker.rdcloud.bms.com:443/rr:locker_opensource'
+CUR_TZ=the current timezone where you are running Locker
+USERNAME=username on the host who is starting Locker
+USER_HOMEDIR=homedir on Docker host for DOCKER_HOST_USER
+USER_UID=$(id -u $USERNAME)
+USER_GID=$(id -g $USERNAME)
+DOCKER_HOST_ROOT=Root directory on the host, e.g. '/' for Mac/Linux and '/c/' for Win
+DOCKER_HOST_ROOT_BM=The value for docker host root to use on docker run command line, defaults to DOCKER_HOST_ROOT if not given; Only needed for Win where give as e.g. 'C:\'
+CHECK_SERVER_VPNCORPNET=a server to ping to determine whether or not on VPN or corporate network
+
+#Query the user for these:
+RUNASUSER=who Locker is being run on behalf of (can be same as DOCKER_HOST_USER but also can be different); default to DOCKER_HOST_USER
+USER_HOMEDIR=The home directory on the Docker host for the RUNASUSER (Locker config stored there in .locker subdir); default to DOCKER_HOST_USER_HOMEDIR
+LOCAL_OR_REMOTE=Run Locker locally (l) or remotely (r)
+TRYPULLUPDATEDLOCKERIMAGE=Try to pull an updated Locker image (y) or not (n)

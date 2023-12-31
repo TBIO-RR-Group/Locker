@@ -1,0 +1,18 @@
+#!/bin/bash
+set -o nounset -o errexit
+
+CONF_DIR="$HOME/.jupyter"
+CONF_FILE="${CONF_DIR}/jupyter_notebook_config.py"
+mkdir -p "${CONF_DIR}"
+
+cat >> $CONF_FILE << EOF
+c = get_config()
+c.NotebookApp.root_dir = '/'
+c.NotebookApp.preferred_dir = '${HOME}'
+c.NotebookApp.tornado_settings = {'headers': {'Content-Security-Policy': 'frame-ancestors *'}}
+c.NotebookApp.default_url = '/lab/tree${LOCKER_WORKING_DIR}'
+c.NotebookApp.token = u''
+EOF
+
+COMMAND='jupyter-lab --config="$CONF_FILE" --no-browser --ip="0.0.0.0" 2>&1'
+eval ${COMMAND}

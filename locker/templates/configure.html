@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+
+{% block title %}Configuration{% endblock %}
+
+{% block main %}
+
+<center><h3>Configuration</h3></center>
+
+<form action="dlconfigure" method=POST>
+  <div class="form-group">
+    <label id="config_sshPrivKeyFile_label">SSH Private Key File:</label>
+    <input type="text" class="form-control" name="config_sshPrivKeyFile" id="config_sshPrivKeyFile" value="{{ config.config_sshPrivKeyFile }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_sshPubKeyFile_label">SSH Public Key File:</label>
+    <input type="text" class="form-control" name="config_sshPubKeyFile" id="config_sshPubKeyFile" value="{{ config.config_sshPubKeyFile }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_offlineUsageStorage_label">Locker Host Location for Caching Network Drive Content:</label>
+    <input type="text" class="form-control" name="config_offlineUsageStorage" id="config_offlineUsageStorage" value="{{ config.config_offlineUsageStorage }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_repoCloneLoc_label">Git Repos Clone Location:</label>
+    <a data-toggle="tooltip" class="gitrepoclone_tooltipLink" title="Locker will create (if necessary) and use a 'repos' subdirectory in this location."><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="config_repoCloneLoc" id="config_repoCloneLoc" value="{{ config.config_repoCloneLoc }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_envVarFile_label">Environment Variable File:</label>
+    <a data-toggle="tooltip" class="envvar_tooltipLink" title="A file that contains environment variables ('VAR=VAL' on each line) to be set inside processes inside the container. If this is specified it will be used for all started containers, unless another environment variable file is specified on the start container page, which will take precedence over this one. An example one, with practical examples that you can modify and tailor to your own use is stored in your home directory in the .locker directory: .locker/locker.env"><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="config_envVarFile" id="config_envVarFile" value="{{ config.config_envVarFile }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_startupScript_label">Startup Script:</label>
+    <a data-toggle="tooltip" class="startupscript_tooltipLink" title="A file that contains a shell script that will be executed right after container startup but before RStudio and other apps are started. If this is specified it will be used for all started containers, unless another startup script file is specified on the start container page, which will take precedence over this one. An example one, with practical examples that you can modify and tailor to your own use is stored in your home directory in the .locker directory: .locker/init_locker.sh"><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="config_startupScript" id="config_startupScript" value="{{ config.config_startupScript }}"></input>
+  </div>
+{% if config.useEcrFlag %}
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+{% endif %}
+  <button type="submit" class="btn btn-default" name="set_config" id="set_config" value="set">Save Configuration</button>
+</form>
+
+{% if 'curOffliningImage' in config %}
+<br><br><a href="{{ url_for('check_offline_image_config_status') + '?imagetag=' + config['curOffliningImage'] }}">Click here</a> to check current status of local caching of network drive content.
+{% else %}
+<br><br><a href="{{ url_for('offline_image_config_start') }}">Click here</a> to configure local caching of network drive content.
+{% endif %}
+
+<script>
+
+function setupFileSelectAC (jqSelector, searchUrl, ftype = 'BOTH') {
+
+   $( jqSelector ).autocomplete({
+      source: function( request, response ) {
+        $.ajax( {
+          url: searchUrl,
+          dataType: "jsonp",
+          data: {
+            term: request.term,
+            ftype: ftype
+          },
+          success: function( data ) {
+            response( data );
+          }
+        } );
+      },
+      minLength: 0,
+      select: function( event, ui ) {
+        if (!ui.item.isfile) {
+           //See here: https://stackoverflow.com/questions/12984151/trigger-search-from-select-within-jquery-ui-autocomplete
+           var that = $(this);            
+           setTimeout(function() {
+              that.autocomplete("search");
+           }, 1);
+        }
+      }
+    } );
+
+
+   $( jqSelector ).click(function() {
+      $( jqSelector ).autocomplete('search',this.value);
+   })
+
+}
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   $("a.gitrepoclone_tooltipLink").tooltip();
+   $("a.envvar_tooltipLink").tooltip();
+   $("a.startupscript_tooltipLink").tooltip();
+
+   setPageButton('config_button');
+
+   setupFileSelectAC ('#config_sshPrivKeyFile', '/paths_ac');
+   setupFileSelectAC ('#config_sshPubKeyFile', '/paths_ac');
+   setupFileSelectAC ('#config_offlineUsageStorage', '/paths_ac', 'DIR');
+   setupFileSelectAC ('#config_repoCloneLoc', '/paths_ac', 'DIR');
+{% if config.useEcrFlag %}
+   setupFileSelectAC ('#config_awsCredsFile', '/paths_ac');
+{% endif %}
+   setupFileSelectAC ('#config_envVarFile', '/paths_ac');
+   setupFileSelectAC ('#config_startupScript', '/paths_ac');
+
+   $("#set_config").click(function(){
+      var orig_ol_loc = "{{ config.config_offlineUsageStorage }}";
+      var new_ol_loc = $('#config_offlineUsageStorage').val()
+      if (!isEmpty(orig_ol_loc) && (orig_ol_loc !== new_ol_loc)) {
+         var alertMsg = "You are changing the Locker Host location for caching network drive content. Any content stored at the old location (" + orig_ol_loc + ") may not be available for use from within your container. (You may redo caching to the new location, or manually copy from the old location to the new, using e.g., rsync).";
+         if (confirm(alertMsg)) {
+            return true;
+         } else {
+           $('#config_offlineUsageStorage').val(orig_ol_loc);
+           return false;
+         }
+      }
+   });
+
+});
+
+</script>
+
+
+{% endblock %}

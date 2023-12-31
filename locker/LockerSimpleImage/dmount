@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+
+# dmount.py
+# Mount a filesystem using SSHFS
+# MFR 4/4/2018
+
+import os, os.path, argparse, subprocess
+
+# --- global settings
+version = "0.1.0"
+
+# --- Main
+if __name__ == '__main__':
+    
+    # Create defaults
+    mpoint   = '/ds'
+    username = os.environ.get('LOCKER_STARTING_USERNAME', os.environ.get('LOCKER_PROJECT_OWNER', os.environ.get('USERNAME')))
+    remote   = '{}@stash.pri.bms.com:/ds'.format(username)
+    
+    # help text
+    help_mpoint    = 'Path to mount point. (Default {})'.format(mpoint)
+    help_remote    = 'Full remote mount spec, e.g. username@my.domain.com:/path/to/filesystem (Default {})'.format(remote)
+    help_idpath    = 'Full path to ssh private key file. (Default None)'
+    help_login     = 'Force the use of provided credentials for authentication. (Default None)'
+    help_username  = 'Username on the remote machine. (Default {})'.format(username)
+    help_password  = 'Password for the user on the remote machine. If provided, idpath is ignored.'
+    help_verbose   = 'Enable verbose output.'
+    help_version   = 'Print dmount version'
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mountpoint", dest="mount_point", default=mpoint,   help=help_mpoint)
+    parser.add_argument("-r", "--remote",     dest="remote",      default=remote,   help=help_remote)
+    parser.add_argument("-i", "--idpath",     dest="idpath",      default=None,     help=help_idpath)
+    parser.add_argument("-u", "--username",   dest="username",    default=None,     help=help_username)
+    parser.add_argument("-p", "--password",   dest="password",    default=None,     help=help_password)
+    parser.add_argument("-l", "--login",      dest="login",       default=None,     help=help_login,      action="store_true")
+    parser.add_argument("-v", "--verbose",    dest='verbose',     default=None,     help=help_verbose,    action="store_true")
+    parser.add_argument("-V", "--version",    dest='version',     default=None,     help=help_version,    action="store_true")
+    
+    args = parser.parse_args()
+    
+    if args.version:
+        print( 'dmount version {}'.format(version) )
+        
+    else:
+        # Attempt the mount using smount
+        cmds = ['smount', '-m', args.mount_point, '-r', args.remote]
+        if args.idpath  : cmds += ['-i', args.idpath]
+        if args.username: cmds += ['-u', args.username]
+        if args.password: cmds += ['-p', args.password]
+        if args.login   : cmds += ['-l', args.login]
+        if args.verbose : cmds += ['-v']
+        cmd = ' '.join(cmds)
+        subprocess.call(cmd, shell=True)
