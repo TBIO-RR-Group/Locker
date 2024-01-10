@@ -75,7 +75,7 @@ locker-startscript-windows: build
 run-locker-maclinux: \
 	build \
 	locker-startscript-maclinux
-	sh ${OUTPUT_FILE}
+	bash ${OUTPUT_FILE}
 
 run-locker-windows: \
 	build \
