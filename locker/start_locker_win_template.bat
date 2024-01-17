@@ -92,10 +92,10 @@ IF NOT EXIST %USER_HOMEDIR%.locker (
    )
 )
 
-IF EXIST %USER_HOMEDIR%.locker\.ssh\id_rsa set PRIVKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_rsa
-IF EXIST %USER_HOMEDIR%.ssh\id_rsa set PRIVKEY_LOC=%USER_HOMEDIR%.ssh\id_rsa
-IF EXIST %USER_HOMEDIR%.locker\.ssh\id_rsa.pub set PUBKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_rsa.pub
-IF EXIST %USER_HOMEDIR%.ssh\id_rsa.pub set PUBKEY_LOC=%USER_HOMEDIR%.ssh\id_rsa.pub
+IF EXIST %USER_HOMEDIR%.locker\.ssh\id_privkey set PRIVKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_privkey
+IF EXIST %USER_HOMEDIR%.ssh\id_privkey set PRIVKEY_LOC=%USER_HOMEDIR%.ssh\id_privkey
+IF EXIST %USER_HOMEDIR%.locker\.ssh\id_privkey.pub set PUBKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_privkey.pub
+IF EXIST %USER_HOMEDIR%.ssh\id_privkey.pub set PUBKEY_LOC=%USER_HOMEDIR%.ssh\id_privkey.pub
 IF EXIST %USER_HOMEDIR%.locker\.aws\credentials set AWSCREDS_LOC=%USER_HOMEDIR%.locker\.aws\credentials
 IF EXIST %USER_HOMEDIR%.aws\credentials set AWSCREDS_LOC=%USER_HOMEDIR%.aws\credentials
 

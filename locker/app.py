@@ -709,7 +709,7 @@ def commit_container():
             curSshfsMount_hostname_path = curSshfsMount[3]
             curSshfsMount_mount_point = curSshfsMount[4]
             curSshfsMount_hostname_user = curSshfsMount[5]
-            cmd=f'smount -i {containerUserHomedir}/.ssh/id_rsa_{curUser} -m {curSshfsMount_mount_point} -r {curSshfsMount_hostname_user}@{curSshfsMount_hostname}:{curSshfsMount_hostname_path}'
+            cmd=f'smount -i {containerUserHomedir}/.ssh/id_privkey_{curUser} -m {curSshfsMount_mount_point} -r {curSshfsMount_hostname_user}@{curSshfsMount_hostname}:{curSshfsMount_hostname_path}'
             curSshfsMountMountRes = DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
     except Exception as e:
         fullMsg = utils.genShowHideMessage('Error remounting network drives after commit in commit_container',": Details: " + str(e),"commitContErr7")
@@ -979,7 +979,7 @@ def startOfflineEnableThread(imagetag, offlineUsageStorageLoc, cacheLocsToCopy, 
                     return
                 toLocCache = str(Path(f'{offlinePath}{cacheloc}').parent)
                 print('toLocCache = ' + toLocCache)
-                rsyncCmdCache = f'rsync -e \'ssh -i {containerUserHomedir}/.ssh/id_rsa_{curUser} -o StrictHostKeyChecking=no\' --info=progress2 -haz --super --chown={containerUser}:{rsyncSetGroup} {curUser}@{network_drive_hostname}:{cachelocAtHost} {toLocCache}'
+                rsyncCmdCache = f'rsync -e \'ssh -i {containerUserHomedir}/.ssh/id_privkey_{curUser} -o StrictHostKeyChecking=no\' --info=progress2 -haz --super --chown={containerUser}:{rsyncSetGroup} {curUser}@{network_drive_hostname}:{cachelocAtHost} {toLocCache}'
 
                 print('rsyncCmdCache: ' + rsyncCmdCache)
                 rsyncCmds[cacheloc] = rsyncCmdCache

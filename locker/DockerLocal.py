@@ -461,19 +461,19 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
         if not utils.empty(sshPrivKey):
             #See here: https://stackoverflow.com/questions/26843625/how-to-send-to-stdin-of-a-docker-py-container
             #And here: https://github.com/docker/docker-py/issues/2255
-            execCmd = f"sh -c 'cat - > {config.containerUserHomedir}/.ssh/id_rsa_{user}'"
+            execCmd = f"sh -c 'cat - > {config.containerUserHomedir}/.ssh/id_privkey_{user}'"
             _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
             socket._sock.sendall(sshPrivKey.encode())
             socket._sock.close()
         else:
-            copyIntoContainer2(contObj=contObj,src=sshPrivKeyFile,dst=f'{config.containerUserHomedir}/.ssh/id_rsa_{user}')
+            copyIntoContainer2(contObj=contObj,src=sshPrivKeyFile,dst=f'{config.containerUserHomedir}/.ssh/id_privkey_{user}')
 
-        cmd=f'chmod 0600 {config.containerUserHomedir}/.ssh/id_rsa_{user}'
+        cmd=f'chmod 0600 {config.containerUserHomedir}/.ssh/id_privkey_{user}'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
-        cmd=f'chown {config.containerUser}:{config.containerUser} {config.containerUserHomedir}/.ssh/id_rsa_{user}'
+        cmd=f'chown {config.containerUser}:{config.containerUser} {config.containerUserHomedir}/.ssh/id_privkey_{user}'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
-        sshConfig = f'host {config.githubUrl}\nHostName {config.githubUrl}\nIdentityFile {config.containerUserHomedir}/.ssh/id_rsa_{user}\nUser git\nStrictHostKeyChecking no\n'
+        sshConfig = f'host {config.githubUrl}\nHostName {config.githubUrl}\nIdentityFile {config.containerUserHomedir}/.ssh/id_privkey_{user}\nUser git\nStrictHostKeyChecking no\n'
         sshConfigTemp_f = tempfile.NamedTemporaryFile('w+t',delete=False)
         sshConfigTemp_f.write(sshConfig)
         sshConfigTemp_fname = sshConfigTemp_f.name
@@ -506,7 +506,7 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
                 if not vpnOrCorpNetworkRequiredToMount or onVpnOrCorpNetwork:
                     cmd=f'mkdir -p {contMountPoint}'
                     contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = config.containerUser, notOnRestartFlag = False)
-                    cmd=f'smount -i {config.containerUserHomedir}/.ssh/id_rsa_{user} -m {contMountPoint} -r {userAtHostName}@{hostname}:{pathAtHostname}'
+                    cmd=f'smount -i {config.containerUserHomedir}/.ssh/id_privkey_{user} -m {contMountPoint} -r {userAtHostName}@{hostname}:{pathAtHostname}'
                     contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = config.containerUser, notOnRestartFlag = False)
 
         if localSshfsMounts is not None:
@@ -536,7 +536,7 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
                 contPath = curSshfsHostMount[1]
                 cmd=f'mkdir -p {contPath}'
                 contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = False)
-                cmd=f'smount -i {config.containerUserHomedir}/.ssh/id_rsa_{user} -m {contPath} -r {dockerHostUser}@{dockerHost}:{hostPath}'
+                cmd=f'smount -i {config.containerUserHomedir}/.ssh/id_privkey_{user} -m {contPath} -r {dockerHostUser}@{dockerHost}:{hostPath}'
                 contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = config.containerUser, notOnRestartFlag = False)
 
     if not utils.empty(sshPubKey) or not utils.empty(sshPubKeyFile):
@@ -546,12 +546,12 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
             socket._sock.sendall(sshPubKey.encode())
             socket._sock.close()
         else:
-            copyIntoContainer2(contObj=contObj,src=sshPubKeyFile,dst='/tmp/id_rsa.pub')
-            cmd=f'chown {config.containerUser}:{config.containerUser} /tmp/id_rsa.pub'
+            copyIntoContainer2(contObj=contObj,src=sshPubKeyFile,dst='/tmp/id_privkey.pub')
+            cmd=f'chown {config.containerUser}:{config.containerUser} /tmp/id_privkey.pub'
             contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
-            cmd=f"sh -c 'cat /tmp/id_rsa.pub >> {config.containerUserHomedir}/.ssh/authorized_keys'"
+            cmd=f"sh -c 'cat /tmp/id_privkey.pub >> {config.containerUserHomedir}/.ssh/authorized_keys'"
             contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
-            cmd='rm -fr /tmp/id_rsa.pub'
+            cmd='rm -fr /tmp/id_privkey.pub'
             contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
         cmd=f'chown {config.containerUser}:{config.containerUser} {config.containerUserHomedir}/.ssh/authorized_keys'
@@ -825,7 +825,8 @@ def execRunWrap(cont_obj,cmd,user='',detach=False,stream=False,environment=None,
 
     cmdResStr = res
     try:
-        cmdResStr = res.decode('ascii').strip()
+        # cmdResStr = res.decode('ascii').strip()
+        cmdResStr = res.decode()
     except:
         pass
 
