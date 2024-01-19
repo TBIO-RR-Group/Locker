@@ -36,6 +36,7 @@ buildfresh:
 # Run locker services
 run-locker-services:
 	docker run \
+		--name ${VERSION} \
 		-d \
 		${RUN_ARGS} \
 		${LOCAL_TAG}
