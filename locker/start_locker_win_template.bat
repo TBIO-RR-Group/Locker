@@ -127,7 +127,7 @@ SET LOCKER_PORT=5000
 SET DOCKER_HOST_ROOT=%ROOT::=%
 SET DOCKER_HOST_ROOT=/%DOCKER_HOST_ROOT%/
 
-SET PROXY_ENV=--env http_proxy="http://proxy-server.bms.com:8080" --env https_proxy="http://proxy-server.bms.com:8080" --env ftp_proxy="http://proxy-server.bms.com:8080" --env no_proxy="*.bms.com,localhost"
+SET PROXY_ENV=--env http_proxy="__http_proxy__" --env https_proxy="__https_proxy__" --env ftp_proxy="__ftp_proxy__" --env no_proxy="__no_proxy__"
 
 :start_locker
 IF "%LOCAL_OR_REMOTE%"=="l" (

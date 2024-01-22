@@ -54,9 +54,9 @@ dev: build
 		-v ${PWD}/config.yml:/config.yml \
 		${LOCAL_TAG}
 
-# Generate locker start scripts 
+# Generate locker start script
 OUTPUT_FILE := /tmp/start_script
-locker-startscript-maclinux: build
+locker-startscript: build
 	docker run \
 		--rm \
 		--env-file=.env \
@@ -64,21 +64,8 @@ locker-startscript-maclinux: build
 		/locker/gen_start_script maclinux > \
 		${OUTPUT_FILE}
 
-locker-startscript-windows: build
-	docker run \
-		--rm \
-		--env-file=.env \
-		${LOCAL_TAG} \
-		/locker/gen_start_script win > \
-		${OUTPUT_FILE}
-
 # Run Locker
-run-locker-maclinux: \
+run-locker: \
 	build \
-	locker-startscript-maclinux
+	locker-startscript
 	bash ${OUTPUT_FILE}
-
-run-locker-windows: \
-	build \
-	locker-startscript-windows
-	${OUTPUT_FILE}

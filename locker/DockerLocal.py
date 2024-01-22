@@ -295,6 +295,7 @@ def runContainer(docker_client, image, ports=None, environment=None, entrypoint=
     if hostUserUid is not None:
         checkUserCmd = f"/bin/bash -c \"id -u {hostUserUid} 1> /dev/null 2> /dev/null && echo 'Exists'\""
         (exitCode,cmdResStr) = execRunWrap(contObj,checkUserCmd,raiseExceptionIfExitCodeNonZero=False)
+        cmdResStr = cmdResStr.strip()
         if cmdResStr != "Exists":
             cmd = f'usermod -u {hostUserUid} {config.containerUser}'
             execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
