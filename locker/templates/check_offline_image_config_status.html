@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Local Caching of Stash{% endblock %}
+
+{% block main %}
+
+<script>
+(function progress_updater() {
+  $.ajax({
+    url: '/get-offline-image-config-status?imagetag={{ args.imagetag }}', 
+    success: function(data) {
+      $('#offline_progress').html(data);
+    },
+    complete: function() {
+      // Schedule the next request when the current one's complete
+      setTimeout(progress_updater);
+    }
+  });
+})();
+</script>
+
+<center><h3>Local Caching of Stash via Image '{{ args.imagetag }}'</h3></center>
+
+<p>Selected /stash locations are currently being copied locally and you can follow the progress below. Please do not exit the application until the below local copying has completed, otherwise not all content will be copied and the operation will fail. You can navigate away from this page, however, and later check the status of the local copying anytime by clicking the link at the bottom of the <a href="{{ url_for('dlconfigure') }}">Configure page</a>.
+
+<pre id='offline_progress'>
+</pre>
+
+<p><button onclick="showSpinner(); window.location='cancel-offline-enable?imagetag={{args.imagetag}}&threadcancel=True'" type="button" class="btn btn-labeled btn-danger"><span class="btn-label"><i class="glyphicon glyphicon-remove"></i></span>Cancel</button>
+
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block title %}Locker Server Portal{% endblock %}
+
+{% block main %}
+
+<center><h3>Servers started by Locker services for {{ config.username }}</h3><h6>Click on column headers to sort</h6></center>
+
+{% if config.username in config.admins %}
+<div class="admin-view">
+  <input type="checkbox" id="admin-toggle" {{'checked' if config.admin_view == 'true' else ''}}>
+  <label for="admin-toggle">Admin view</label>
+</div>
+{% endif %}
+
+<table id="grid-ec2" class="table table-condensed table-hover table-striped">
+    <thead>
+        <tr>
+            <th data-column-id="id" data-visible="false">Instance Id</th>
+	          <th data-column-id="hostname" data-formatter="hostname">Hostname</th>
+            <th data-column-id="ip">IP address</th>
+            <th data-column-id="type">Instance Type</th>
+            <th data-column-id="launch_time" data-formatter="launch_time">Last Start Time (UTC)</th>
+            <th data-column-id="desc">Description</th>
+            <th data-column-id="state">State</th>
+            <th data-column-id="creator" data-visible={{ config.admin_view }}>Creator</th>
+            <th data-column-id="open_connection" data-formatter="open_connection">Open Connection</th>
+            <th data-column-id="actions" data-formatter="actions">Change State</th>
+        </tr>
+    </thead>
+    <tbody>
+  {% if config.inst %}
+    {% for curinst in config.inst %}
+        <tr>
+	    <td>{{ curinst.InstanceId }}</td>
+	    {% if 'Hostname' in curinst.TagsHash %}
+	    <td>{{ curinst.TagsHash['Hostname'] }}</td>
+	    {% else %}
+	    <td></td>
+	    {% endif %}
+	    <td>{{ curinst.PrivateIpAddress }}</td>
+	    {% if curinst.InstanceType in config.inst_type_name_to_desc %}
+	    <td>{{ config.inst_type_name_to_desc[curinst.InstanceType] }}</td>
+	    {% elif 'InstanceTypeDescription' in curinst.TagsHash %}
+	    <td>{{ curinst.TagsHash['InstanceTypeDescription'] }}</td>
+	    {% else %}
+	    <td>{{ curinst.InstanceType }}</td>
+	    {% endif %}
+	    <td>{{ curinst.LaunchTime }}</td>
+	    {% if 'Description' in curinst.TagsHash %}
+	    <td>{{ curinst.TagsHash['Description'] }}</td>
+	    {% else %}
+	    <td></td>
+	    {% endif %}
+	    <td>{{ curinst.State.Name }}</td>
+	    <td>{{ curinst.TagsHash['Creator'] }}</td>
+	    <td>Change State</td>
+        </tr>
+    {% endfor %}
+  {% endif %}
+    </tbody>
+</table>
+
+<script>
+
+$(document).ready(function(){
+
+   setPageButton('{{ config.config_btn }}');
+
+   $("#grid-ec2").bootgrid({ "formatters": {
+                                           "actions": function(column, row)
+                                           {   var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id
+                                               if (row.state == 'running') {
+                                                 var stop_link = "locker.cgi?a=stop_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
+                                                 return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
+                                               } else if (row.state == 'stopped') {
+                                                 var start_link = "locker.cgi?a=start_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
+                                                 return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + start_link + "'>Restart</a>";
+                                               } else if (row.state != 'terminated') {
+                                                 return "<a href='" + terminate_link + "'>Terminate</a>";
+                                               }
+                                           },
+                                           "open_connection": function(column, row)
+                                           {   if (row.state == 'running') {
+                                                  var hostname = row.hostname;
+                                                  if (isBlank(hostname)) {
+                                                    ip = row.ip;
+                                                    {{ config.ip_to_hostname }}
+                                                  }
+                                                  var locker_link = "http://" + hostname + ":5000";
+                                                  var ssh_link = "ssh://{{ config.ami_user }}@" + row.ip;
+                                                  return "<a href='" + locker_link + "'>Locker</a>&nbsp;|&nbsp;<a title='Note that this SSH link will only work on Mac/Linux and not on Windows. On Windows you will need to configure an SSH client such as PuTTY to SSH to the server at: {{ config.ami_user }}@" + row.ip + " and use your specified SSH private key (password login not supported).' href='" + ssh_link + "'>SSH</a>";
+                                               } else { return "&nbsp;" }
+                                           },
+                                           "launch_time": function(column, row)
+                                           {   var launch_time = row.launch_time;
+                                               launch_time = launch_time.replace(/\+00\:00$/,'');
+                                               return(launch_time);
+                                           },
+                                           "hostname": function(column, row)
+                                           {   var hostname = row.hostname;
+                                               if (isBlank(hostname)) {
+                                                 ip = row.ip;
+                                                 {{ config.ip_to_hostname }}
+                                               }
+                                               return(hostname)
+                                           }
+                                     }
+                              })
+});
+
+// Toggle admin view when checkbox changes
+$('#admin-toggle').change(function() {
+  showSpinner();
+  window.location=`locker.cgi?a=ec2_portal&admin_view=${this.checked}`;
+});
+
+</script>
+
+{% endblock %}

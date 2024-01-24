@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+
+#Generate a start script from templates that fills in specific values from config.yml.
+#Execute this using the created Locker Docker image, e.g.:
+#Run like this for maclinux: docker run --rm docker.rdcloud.bms.com:443/rr:locker_opensource /locker/gen_start_script maclinux > /tmp/start_script.sh
+#Run like this for win: docker run --rm docker.rdcloud.bms.com:443/rr:locker_opensource /locker/gen_start_script win > /tmp/start_script.bat
+#Note: run just like this, don't do --it or --tty as those might cause special characters to get inserted that will cause the generated script to not be able to be executed
+
+import sys
+import re
+from Config import Config
+import string
+import unicodedata
+import utils
+import os
+
+# Load locker configuration
+config = Config("/config.yml")
+
+platform = sys.argv[1]; #win or maclinux
+
+if platform == 'win':
+    template = '/locker/start_locker_win_template.bat'
+elif platform == 'maclinux':
+    template = '/locker/start_locker_template.sh'
+else:
+    raise Exception("Error: options are 'win' or 'maclinux'")
+
+template_f = open(template, "r", encoding="utf-8")
+ 
+#read whole file to a string
+template_contents = template_f.read()
+ 
+#close file
+template_f.close()
+
+# Substitute variables in template from config/environment.
+template_contents = re.sub(
+    r'__LOCKER_IMAGE__',
+    config.locker_image,
+    template_contents
+)
+template_contents = re.sub(
+    r'__USABLE_PORTS__',
+    config.usable_ports,
+    template_contents
+)
+template_contents = re.sub(
+    r'__CHECK_CORP_NETWORK_VPN_SERVER__',
+    config.checkCorpNetworkVPNServer,
+    template_contents
+)
+template_contents = re.sub(
+    r'__CONTAINER_USER__',
+    config.containerUser, 
+    template_contents
+)
+template_contents = re.sub(
+    r'__AWS_ACCESS_KEY_ID__',
+    os.environ.get("AWS_ACCESS_KEY_ID"),
+    template_contents
+)
+template_contents = re.sub(
+    r'__AWS_SECRET_ACCESS_KEY__',
+    os.environ.get("AWS_SECRET_ACCESS_KEY"),
+    template_contents
+)
+template_contents = re.sub(
+    r'__AWS_DEFAULT_REGION__',
+    os.environ.get("AWS_DEFAULT_REGION"),
+    template_contents
+)
+
+template_contents = re.sub(
+    r'__http_proxy__',
+    config.proxies["http_proxy"],
+    template_contents
+)
+template_contents = re.sub(
+    r'__https_proxy__',
+    config.proxies["https_proxy"],
+    template_contents
+)
+template_contents = re.sub(
+    r'__ftp_proxy__',
+    config.proxies["ftp_proxy"],
+    template_contents
+)
+template_contents = re.sub(
+    r'__no_proxy__',
+    config.proxies["no_proxy"],
+    template_contents
+)
+
+print(template_contents)
+

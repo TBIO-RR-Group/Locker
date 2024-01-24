@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -o nounset -o errexit -o pipefail
+
+CONF_DIR="$HOME/.jupyter"
+CONF_FILE="${CONF_DIR}/jupyter_notebook_config.py"
+
+mkdir -p "${CONF_DIR}"
+
+cat <<EOF >>"${CONF_FILE}"
+c.NotebookApp.notebook_dir = '/'
+#c.NotebookApp.base_url = ''
+c.NotebookApp.tornado_settings = {'headers': {'Content-Security-Policy': 'frame-ancestors *'}}
+c.NotebookApp.default_url = 'tree${LOCKER_WORKING_DIR}'
+#c.NotebookApp.default_url = '/lab/tree${LOCKER_WORKING_DIR}'
+#disable quit button in Jupyter 5.5+
+c.NotebookApp.quit_button = False 
+#See here: https://lerner.co.il/2017/02/01/five-minute-guide-setting-jupyter-notebook-server/
+c.NotebookApp.open_browser = False    # no browser needed on a server
+c.NotebookApp.ip = '0.0.0.0'          # listen on the network
+c.NotebookApp.password = ''            # don't require a password
+c.NotebookApp.token = ''              # don't require a security token
+EOF
+
+FINAL_COMMAND='jupyter notebook --config="$CONF_FILE" 2>&1'
+
+eval ${FINAL_COMMAND}

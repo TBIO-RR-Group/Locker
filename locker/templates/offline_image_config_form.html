@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Configure Local Caching of {{offline_info.network_drive_name}}{% endblock %}
+
+{% block main %}
+
+<center><h3>Configure Local Caching of {{offline_info.network_drive_name}}</h3></center>
+
+<form action="exec-offline-image" method=POST>
+  <div class="panel panel-primary">
+    <div class="panel-heading">{{offline_info.network_drive_name}} Locations to cache on local machine (come back and re-do this page if you need more/others)</div>
+    <div class="panel-body">
+      <div class="form-group">
+	<input type="text" class="form-control" name="cacheloc1" id="cacheloc1" value=""></input>
+	<input type="text" class="form-control" name="cacheloc2" id="cacheloc2" value=""></input>
+	<input type="text" class="form-control" name="cacheloc3" id="cacheloc3" value=""></input>
+      </div>
+    </div>
+  </div>
+  <input type="hidden" name="container" value="{{offline_info.container}}" />
+  <input type="hidden" name="imagetag" value="{{offline_info.imagetag}}" />
+  <input type="hidden" name="network_drive" value="{{offline_info.network_drive_id}}" />  
+  <button type="submit" class="btn btn-default">Start</button>
+  <button onclick="showSpinner(); window.location='cancel-offline-enable?imagetag={{offline_info.imagetag}}'" type="button" class="btn btn-labeled btn-danger"><span class="btn-label"><i class="glyphicon glyphicon-remove"></i></span>Cancel</button
+</form>
+
+<script>
+
+var container = '{{offline_info.container}}';
+
+function setupFileSelectAC (jqSelector, searchUrl, container, ftype = 'BOTH') {
+
+   $( jqSelector ).autocomplete({
+      source: function( request, response ) {
+        var searchTerm = request.term;
+        var matchTermOrig = '{{offline_info.network_drive_mount_point}}';
+	var matchTerm = matchTermOrig.replace(/\//g, '\/');
+        if (!searchTerm || ($.trim(searchTerm).length <= 0) || !searchTerm.match(new RegExp('^' + matchTerm))) {
+           searchTerm = matchTermOrig;
+        }
+        $.ajax( {
+          url: searchUrl,
+          dataType: "jsonp",
+          data: {
+            term: searchTerm,
+            ftype: ftype,
+            container: container
+          },
+          success: function( data ) {
+	    var matchTermOrig = '{{offline_info.network_drive_mount_point}}';
+	    var matchTerm = matchTermOrig.replace(/\//g, '\/');		
+	    filteredData = $.grep(data,function(val) { return val.value.match(new RegExp('^' + matchTerm)); });
+            response( filteredData );
+          }
+        } );
+      },
+      minLength: 0,
+      select: function( event, ui ) {
+        if (!ui.item.isfile) {
+           //See here: https://stackoverflow.com/questions/12984151/trigger-search-from-select-within-jquery-ui-autocomplete
+           var that = $(this);            
+           setTimeout(function() {
+              that.autocomplete("search");
+           }, 1);
+        }
+      }
+    } );
+
+
+   $( jqSelector ).click(function() {
+      $( jqSelector ).autocomplete('search',this.value);
+   })
+
+}
+
+$(document).ready(function(){
+
+   setPageButton('config_button');
+
+   setupFileSelectAC ('#cacheloc1', '/paths_ac', container);
+   setupFileSelectAC ('#cacheloc2', '/paths_ac', container);
+   setupFileSelectAC ('#cacheloc3', '/paths_ac', container);
+
+//   $('#cacheloc1').click(function(){
+//      if($('#cacheloc1').val() == ''){
+//         $('#cacheloc1').val('/stash');
+//      }
+//   });
+
+});
+
+</script>
+
+
+{% endblock %}

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -o nounset -o errexit -o pipefail
+
+#Configure Spark if present
+if [ -n "${SPARK_HOME:-}" ]; then
+  echo ".libPaths(c(file.path(Sys.getenv('SPARK_HOME'), 'R', 'lib'), .libPaths()))" >> ~/.Rprofile
+fi
+
+# Set environment variable for where the history file will be stored
+export R_HISTFILE=$USER.Rhistory
+
+printenv >> ~/.Renviron
+
+# Set initial working directory, which is the directory RStudio opens up to
+mkdir -p ~/.rstudio/monitored/user-settings/
+echo -e "initialWorkingDirectory=\"${DRT_WORKING_DIR:-"${LOCKER_WORKING_DIR}"}\"\n" >> ~/.rstudio/monitored/user-settings/user-settings
+
+sudo chown -R $USER:$USER /var/lib/rstudio-server
+
+#First way is how to start RStudio in older versions (used up to TBio2021-10 images) and second way is for newer versions (TBio2022-03 image and newer):
+/usr/lib/rstudio-server/bin/rserver --www-port=${1:-8888} --auth-none=1 --server-app-armor-enabled=0 || /usr/lib/rstudio-server/bin/rserver --www-port=${1:-8888} --auth-none=1 --server-app-armor-enabled=0 --server-user=$USER --www-frame-origin=any

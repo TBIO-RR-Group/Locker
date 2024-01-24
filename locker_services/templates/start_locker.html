@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Start Locker{% endblock %}
+
+{% block main %}
+
+<center><h3>Start Locker on a Linux Server from app (assumes Docker already running and available)</h3></center>
+
+<form action="locker.cgi" method=POST enctype="multipart/form-data" onsubmit="showSpinner();">
+  <div class="form-group">
+    <label id="config_locker_username_label">Locker Username (Locker and started containers will be accessible to this username):</label>
+    <input type="text" class="form-control" name="config_locker_username" id="config_locker_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_server_username_label">Server Username (account to use to setup Locker on the server, can be same as Locker Username):</label>
+    <input type="text" class="form-control" name="config_server_username" id="config_server_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_hostip_label">Server Hostname or IP address:</label>
+    <input type="text" class="form-control" name="config_hostip" id="config_hostip" value="{{ config.config_hostip }}"></input>
+  </div>
+  <div class="form-group">
+    <label for="password">Server Password</label>
+    <input type="password" class="form-control" id="password" name="password" placeholder="Password">
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_label">Or Server SSH Private Key File:</label><br>
+    <!-- See here for the file upload button: https://stackoverflow.com/questions/11235206/twitter-bootstrap-form-file-element-upload-button -->
+    <label class="btn btn-primary" for="config_sshprivkey">
+      <input id="config_sshprivkey" name="config_sshprivkey" type="file" style="display:none" onchange="$('#upload-file-info').text(this.files[0].name)">
+      Browse
+    </label>
+    <span class='label label-info' id="upload-file-info"></span>
+  </div>
+  <div class="form-group">
+    <label id="config_install_location_label">Locker Install Location at Server (default ~/.locker_install):</label>
+    <input type="text" class="form-control" name="config_install_location" id="config_install_location" value=""></input>
+  </div>
+  <span style="display:none"><!-- remove this span to show and enable users to be able to access ECR (in addition to our Docker registry) -->
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+  <div class="checkbox">
+    <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
+  </div>
+  </span>
+  <button type="submit" class="btn btn-default" name="start_btn" id="start_btn" value="set">Start</button>
+  <input type="hidden" name="a" value="start_locker" />
+  <input type="hidden" name="stage" value="exec" />
+</form>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   setPageButton('start_locker_btn');
+
+});
+
+</script>
+
+
+{% endblock %}

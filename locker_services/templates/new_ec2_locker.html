@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Start new AWS Server with Locker{% endblock %}
+
+{% block main %}
+
+<center><h3>Start a new server in the Amazon AWS Cloud and Start Locker on it</h3><span style="font-size:small;font-weight:bold;">Use the Locker Server Portal tab to manage this server. Please stop all your servers when not in use!<br>Our costs increase as RAM and/or number of cores increase: please use only as much machine as you need for a given task.</span></center><p>
+
+<button class="btn btn-xs btn-default" id="saveform" onclick="saveFormData('start_new_ec2_locker');">Save Form</button>
+<button class="btn btn-xs btn-default" id="saveform" onclick="restoreFormData('start_new_ec2_locker');">Restore Form</button><p>
+<form action="locker.cgi" method=POST enctype="multipart/form-data" onsubmit="showSpinner();" id="start_new_ec2_locker">
+  <div class="form-group">
+    <label id="config_root_disk_size_label">Root Disk Size in GB (max size 1000 GB):</label>
+    <a data-toggle="tooltip" class="root_disk_size_tooltipLink" title="***'Root Disk Size' = total amount of disk space, in gigabytes (GB), available to the server. Must be at least 100 GB. *** You will need enough disk space for the operating system, any Docker images (i.e., environments) you will pull, and any temporary files you or your processes might create while working in a container. *** We provide two types of Docker images, 'standard' and 'self-contained'. Standard images are smaller but self-contained images usually have better (sometimes much better) performance (i.e. speed). *** 100 GB (the default) usually should suffice. Add an extra 75 GB for each additional self-contained image (beyond the first) you plan to pull."><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="number" min="100" class="form-control" name="config_root_disk_size" id="config_root_disk_size" value="100"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_aws_region_label">AWS Region:</label>
+    <SELECT class="form-control" name="config_aws_region" id="config_aws_region">
+      {% for rname,rid in config.aws_regions.items() %}
+      <OPTION value={{rid}}>{{rname}}</option>
+      {% endfor %}
+    </SELECT>
+  </div>
+  <div class="form-group">
+    <label id="config_ec2_instance_type_label">Instance Type:</label> (<a href="https://aws.amazon.com/ec2/instance-types/" target=_NEW>more details</a>)
+    <SELECT class="form-control" name="config_ec2_instance_type" id="config_ec2_instance_type">
+      {% for instType in config.ec2_instance_types %}
+      {% if instType.startswith('---') %}
+      <OPTION value="{{instType}}" disabled>{{instType}}</option>
+      {% else %}
+      <OPTION value="{{instType}}">{{instType}}</option>
+      {% endif %}
+      {% endfor %}
+    </SELECT>
+  </div>
+  <div class="form-group">
+    <label id="config_ec2_desc_label">Description (i.e. an optional note to describe what you will use this server for):</label>
+    <input type="text" class="form-control" name="config_ec2_desc" id="config_ec2_desc" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_locker_username_label">Locker Username (Locker and started container servers RStudio, VScode, Jupyter, Jupyterlab will be accessible to this username):</label>
+    <input type="text" class="form-control" name="config_locker_username" id="config_locker_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_sshpubkey_label">SSH Public Key (keypair used to SSH as the '{{config.container_user}}' user into started containers, and mount /stash and home directory):</label><br>
+      <textarea id="config_sshpubkey" name="config_sshpubkey" class="form-control"></textarea>
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_locker_label">SSH Private Key (keypair used to SSH as the '{{config.container_user}}' user into started containers, and mount /stash and home directory):</label><br>
+      <textarea id="config_sshprivkey" name="config_sshprivkey" class="form-control"></textarea>
+  </div>
+  {% if config.mount_network_homedir %}
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="mount_network_homedir_cb" value="True" checked>Mount Network Home Directory on server (in /nethome)?</label>
+    </div>
+  </div>
+  {% endif %}
+  <span style="display:none"><!-- remove this span to show and enable users to be able to access ECR (in addition to our Docker registry) -->
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+  <div class="checkbox">
+    <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
+  </div>
+  </span>
+  <button type="submit" class="btn btn-default" name="start_ec2_locker" id="start_ec2_locker" value="set">Start Locker on New Server</button>
+  <input type="hidden" name="a" value="new_ec2_locker" />
+  <input type="hidden" name="stage" value="exec" />
+  <input type="hidden" name="devtest" value="{{ config.devtest }}" />
+</form>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   $("a.root_disk_size_tooltipLink").tooltip();
+
+   setPageButton('new_ec2_locker_btn');
+
+   $("#config_aws_region option[value='us-east-1']").prop('selected', true);
+   $("#config_ec2_instance_type option[value='m4.xlarge']").prop('selected', true);
+
+   $("#config_aws_region").select2();
+   $("#config_ec2_instance_type").select2();
+
+});
+
+</script>
+
+
+{% endblock %}

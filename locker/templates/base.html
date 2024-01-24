@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Required meta tags -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+
+  <!-- jQuery Bootgrid CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='jquery.bootgrid.min.css') }}">
+
+  <!-- jQuery UI CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='jquery-ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='DockerLocal.css') }}">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+  <title>{% block title %}{% endblock %}</title>
+
+  <script>
+
+    var myVar = setInterval(heartbeat, 10000);
+
+    function heartbeat() {
+      var xhttp = new XMLHttpRequest();
+      xhttp.onreadystatechange = function() {
+         if (this.readyState == 4 && this.status == 200) {
+           console.log(this.responseText);
+         }
+      };
+      xhttp.open("GET", "/heartbeat?action=set", true);
+      xhttp.send();
+    }
+
+    function isBlank(str) {
+       return (!str || /^\s*$/.test(str));
+    }
+
+    function setPageButton(on_button_id) {
+       var allButtonIds = ['config_button','home_button','images_button','exit_button'];
+       for (var idx=0; idx<allButtonIds.length; idx++) {
+          var curButtonId = allButtonIds[idx];
+	  $('#' + curButtonId).attr('class','btn btn-primary');
+       }
+       $('#' + on_button_id).attr('class','btn btn-success');
+    }
+
+    function toggleShowHide(id) {
+
+       var x = document.getElementById(id);
+       var setTo = '';
+       if (x.style.display !== "none") {
+          x.style.display = "none";
+          setTo = '&nbsp;+';
+       } else {
+          x.style.display = "";
+          setTo = '&nbsp;-';
+       }
+
+       var x_clickon = document.getElementById(id + '_clickon');
+       if (x_clickon) {
+          x_clickon.innerHTML = setTo;
+       }
+
+    }
+
+  </script>
+</head>
+
+<body>
+
+<style>
+.navbar {
+    border: 0px;
+}
+.navbar-default {
+     background-color: white;
+}
+.navbar-brand {
+    padding: 10px;
+    height: 40px;
+}
+.nav>li>a:hover, .nav>li>a:focus {
+    text-decoration: none;
+    background-color: #bbb;
+}
+#exit_button {
+    float: right;
+    margin: 4px;
+}
+</style>
+
+<nav class="navbar navbar-default">
+  <div class="container-fluid">
+    <ul class="nav nav-tabs">
+      <!-- See here: https://stackoverflow.com/questions/12912048/how-to-maintain-aspect-ratio-using-html-img-tag -->
+      <li><img src="{{ url_for('static',filename='logo.jpg') }}" alt="Locker" style="max-width:64px;max-height:64px;width:auto;height:auto"></li>
+      <li><a id="config_button" class="btn btn-primary" href="{{ url_for('dlconfigure') }}"><span class="glyphicon glyphicon-cog"></span>&nbsp;Configure</a></li>&nbsp;&nbsp;
+      <li><a id="images_button" class="btn btn-primary" href="{{ url_for('images') }}" onclick="showSpinner();">Images</a></li>&nbsp;&nbsp;
+      <li><a id="home_button" class="btn btn-primary" href="{{ url_for('home') }}">Containers</a></li>&nbsp;&nbsp;
+<!--      <a id="exit_button" class="navbar-text" href="{{ url_for('shutdown') }}">Exit/Shutdown app</a> -->
+      <span id='locker_status'></span>
+      <a id="exit_button" class="btn btn-primary" href="{{ url_for('shutdown') }}" onclick='if (confirm("Are you sure you want to exit and shutdown Locker? If so click OK and then you will see a page saying Application shutting down and you can simply close that page.")) { showSpinner(); return(true); } else { return false; }'><span class="glyphicon glyphicon-off"></span>&nbsp;Exit Locker</a>
+    </ul>
+  </div>
+</nav>
+
+  <!-- Optional JavaScript -->
+  <!-- jQuery first, then Bootstrap JS, then jQuery bootgrid -->
+  <script src="{{ url_for('static', filename='jquery-1.11.1.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='jquery.bootgrid.min.js') }}"></script>
+
+  <script src="{{ url_for('static', filename='jquery-ui.js') }}"></script>
+
+  {% block main %}{% endblock %}
+
+{% for category, message in get_flashed_messages(with_categories=True) %}
+  <div class="alert alert-{{category}}">{{ message }}</div>
+{% endfor %}
+
+<!--
+See here for where I got the simple Font Awesome-based spinner:
+https://stackoverflow.com/questions/14972451/popup-window-with-ajax-spinner-for-twitter-bootstrap
+-->
+
+<!-- CSS -->
+<style>
+    #spinner-modal .modal-dialog,
+    #spinner-modal .modal-content,
+    #spinner-modal .modal-body {
+        background: transparent;
+        color: rgba(255,255,255,1);
+        box-shadow: none;
+        border: none;
+    }
+</style>
+
+<!--[ SPINNER MODAL ]-->
+<!-- See here for how I made so unclickable/uninterruptable: https://stackoverflow.com/questions/22207377/disable-click-outside-of-bootstrap-modal-area-to-close-modal -->
+<div class="modal fade" id="spinner-modal" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <h3><i class="fa fa-5x fa-spin fa-spinner"></i> Working...</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showSpinner() {
+
+   $('#spinner-modal').modal('show');
+
+}
+
+function hideSpinner() {
+
+   $('#spinner-modal').modal('hide');
+
+}
+
+$(document).ready(function(){
+   $('#locker_status').load('{{ url_for('locker_status') }}');
+});
+
+</script>  
+
+</body>
+
+</html>

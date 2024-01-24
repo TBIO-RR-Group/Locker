@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}Images{% endblock %}
+
+{% block main %}
+
+<center><h3>Images</h3><h6>Click on column headers to sort</h6></center>
+
+<button class="btn btn-xs btn-default" onclick="location.reload();">Default Sort</button>
+<table id="grid-images" class="table table-condensed table-hover table-striped">
+    <thead>
+        <tr>
+            <th data-column-id="id">ID</th>
+            <th data-column-id="tags" data-formatter="tags">Tags</th>
+            <th data-column-id="pulled" data-formatter="pull">Pulled?</th>
+            <th data-column-id="startcont" data-formatter="startCont">Start Container</th>
+            <th data-column-id="remove" data-formatter="remove">Remove Image</th>
+        </tr>
+    </thead>
+    <tbody>
+  {% if images_info %}
+    {% for full_tag in images_info['image_names_sorted'] %}
+        <tr>
+            <td>{{ images_info['images_info_dict'][full_tag].short_id }}</td>
+	    <td>{{ images_info['images_info_dict'][full_tag].locker_runnable ~ "___" ~ images_info['images_info_dict'][full_tag].devtest ~ "___" ~ full_tag }}</td>
+	    {%if 'pulling_full_tag' in images_info['images_info_dict'][full_tag] and images_info['images_info_dict'][full_tag].pulling_full_tag == full_tag %}
+            <td>Pulling</td>
+	    {% elif 'pulling_full_tag' in images_info['images_info_dict'][full_tag] and images_info['images_info_dict'][full_tag].pulling_full_tag != full_tag %}
+	    <td>OTHER_TAG_PULLING</td>
+	    {% else %}
+	    <td>{{ images_info['images_info_dict'][full_tag].pulled }}</td>
+	    {% endif %}
+            <td>Start</td>
+            <td>Remove</td>
+        </tr>
+    {% endfor %}
+  {% endif %}
+    </tbody>
+</table>
+
+<script>
+
+$(document).ready(function(){
+
+   setPageButton('images_button');
+
+   $("#grid-images").bootgrid({
+                              "formatters": {
+                                           "pull": function(column, row)
+                                            {
+                                              var matches = row.tags.match(/^(.+)___(.+)___(.+)$/);
+				              var locker_runnable = matches[1];
+				              var devtest = matches[2];
+				              var tagOrig = matches[3];
+                                               if (row.pulled == 'OTHER_TAG_PULLING') {
+						   return("&nbsp;");
+					       } else if (row.pulled == 'True') {
+                                                 return("Yes");
+                                              } else if (row.pulled == 'Pulling') {
+						//var link_ = "check-pull-progress?image=" + tagOrig.replace(/^.+\//,"");
+						var link_ = "check-pull-progress?image=" + tagOrig;
+                                                return "<a href='" + link_ + "'>Pulling</a>";
+                                              } else { 
+                                                //var link_ = "pull-image?image=" + tagOrig.replace(/^.+\//,"");
+						var link_ = "pull-image?image=" + tagOrig;
+                                                return "<a href='" + link_ + "'>Pull</a>";
+                                              }
+                                           },
+                                           "startCont": function(column, row)
+                                           {
+                                              var matches = row.tags.match(/^(.+)___(.+)___(.+)$/);
+				              var locker_runnable = matches[1];
+				              var devtest = matches[2];
+				              var tagOrig = matches[3];
+                                              //The image must have been pulled from private Docker registry and named in correct format in order to start a container from it
+                                               if ((row.pulled == 'False') ||
+						   (row.pulled == 'Pulling') ||
+						   (locker_runnable != 'True')) { return ""; }
+//                                              var link_ = "start-container?image=" + row.id;
+//                                              return "<a href='" + link_ + "'>Start</a>";
+
+                                               var startForm = "<form action='start-container-form' method=POST onsubmit='return checkRunningContainerCt({{ images_info.running_container_ct }},{{ images_info.max_rec_cont }});'><input type=hidden name='image_id' value='" + row.id + "'><input type=hidden name='image_tag' value='" + tagOrig.replace(/^.+\//,"") + "'><input type=hidden name='full_image_tag' value='" + tagOrig + "'><input type='submit' value='Start'></form>";
+                                                return startForm
+                                           },
+                                           "remove": function(column, row)
+                                           {
+                                              var matches = row.tags.match(/^(.+)___(.+)___(.+)$/);
+				              var locker_runnable = matches[1];
+				              var devtest = matches[2];
+				              var tagOrig = matches[3];
+                                              if ((row.pulled == 'False') || (row.pulled == 'Pulling')) { return ""; }
+                                              var link_ = "remove-image?image=" + tagOrig;
+                                              var confirmMsg = 'Are you sure you want to remove image ' + tagOrig + '?';
+                                              return "<a href='" + link_ + "' onclick='if (confirm(\"" + confirmMsg + "\")) { showSpinner(); return true; } else { return false; }'>Remove</a>";
+                                           },
+                                           "tags": function(column, row)
+                                           {
+                                              var matches = row.tags.match(/^(.+)___(.+)___(.+)$/);
+				              var locker_runnable = matches[1];
+				              var devtest = matches[2];
+				              var tagOrig = matches[3];
+                                              var shortTag = tagOrig.replace(/^.+\//,"");
+					      if (devtest == 'True') {
+						  var tooltipTxt = tagOrig + "\n\nThis image is a dev/test image and only use at your own risk! Do not do any production work with it. We cannot guarantee the correctness, stability, or continued availability of this image."
+						  return "<span title='" + tooltipTxt + "' style='color:red;font-weight:bold;'>!!!" + shortTag + "!!!</span>";
+					      } else {
+						  var tooltipTxt = tagOrig;
+						  return "<span title='" + tooltipTxt + "'>" + shortTag + "</span>";
+					      }
+                                           }
+                              }
+
+})
+});
+
+function checkRunningContainerCt(running_container_ct,max_rec_cont) {
+   if (running_container_ct >= max_rec_cont) {
+      return confirm(running_container_ct + " containers already are running. The recommended maximum is " + max_rec_cont + ". Are you sure you want to start another container?");
+   } else {
+      return true;
+   }
+}
+
+</script>
+
+
+
+{% endblock %}

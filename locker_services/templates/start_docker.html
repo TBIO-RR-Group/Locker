@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Start Docker{% endblock %}
+
+{% block main %}
+
+<center><h3>Check if Docker is Installed, Running, and Accessible on a server;</h3>Optionally Install and Start it if not (<a href='https://www.linux.com/training-tutorials/linux-101-introduction-sudo/'>sudo</a> access required)</center>
+
+<button class="btn btn-xs btn-default" id="saveform" onclick="saveFormData('start_docker');">Save Form</button>
+<button class="btn btn-xs btn-default" id="saveform" onclick="restoreFormData('start_docker');">Restore Form</button><p>
+<form action="locker.cgi" method=POST enctype="multipart/form-data" onsubmit="showSpinner();" id="start_docker">
+  <div class="form-group">
+    <label id="config_server_username_label">Username:</label>
+    <input type="text" class="form-control" name="config_server_username" id="config_server_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="config_hostip_label">Server Hostname or IP address:</label>
+    <input type="text" class="form-control" name="config_hostip" id="config_hostip" value="{{ config.config_hostip }}"></input>
+  </div>
+  <div class="form-group">
+    <label for="password">Password</label>
+    <input type="password" class="form-control" id="password" name="password" placeholder="Password">
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_label">Or SSH Private Key:</label><br>
+      <textarea id="config_sshprivkey" name="config_sshprivkey" class="form-control"></textarea>
+  </div>
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="install_docker_cb" value="True">Install and Start Docker?</label>
+    </div>
+  </div>
+  <span style="display:none"><!-- remove this span to show and enable users to be able to access ECR (in addition to our Docker registry) -->
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+  <div class="checkbox">
+    <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
+  </div>
+  </span>
+  <button type="submit" class="btn btn-default" name="start_btn" id="start_btn" value="set">Check/Start Docker</button>
+  <input type="hidden" name="a" value="start_docker" />
+  <input type="hidden" name="stage" value="exec" />
+</form>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   setPageButton('start_docker_btn');
+
+});
+
+</script>
+
+
+{% endblock %}

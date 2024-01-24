@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Start Docker{% endblock %}
+
+{% block main %}
+
+<center><h3>Docker status on server <i>{{ config.hostname }}</i></h3></center>
+
+<ul>
+<li>docker installed: {{ 'DOCKER_INSTALLED' in config.docker_status }}
+<li>dockerd installed: {{ 'DOCKERD_INSTALLED' in config.docker_status }}
+<li>User '{{config.username}}' in group of /var/run/docker.sock ({{ config.docker_status['DOCKER_GROUP'] if 'DOCKER_GROUP' in config.docker_status else 'NA' }}): {{ 'USER_IN_DOCKER_GROUP' in config.docker_status }}
+<li>Docker accessible ('docker info' successful): {{ 'DOCKER_INFO_SUCCESS' in config.docker_status }}
+</ul>
+{{config.msg}}
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   setPageButton('start_docker_btn');
+
+});
+
+</script>
+
+{% endblock %}

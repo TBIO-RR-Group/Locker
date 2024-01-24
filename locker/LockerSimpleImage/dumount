@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+
+# dumount.py
+# Unmount a filesystem that used SSHFS and clean up
+# MFR 4/4/2018
+
+import subprocess, argparse
+
+# --- global settings
+version = "0.1.0"
+
+# ---
+if __name__ == '__main__':
+    
+    # Defaults and help
+    default_mpoint = '/ds'
+    help_mpoint    = 'Path to mount point. (Default {})'.format(default_mpoint)
+    help_version   = 'Print dumount version'
+    
+    # Set up command line parser and parse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mountpoint", dest="mount_point", default=default_mpoint, help=help_mpoint)
+    parser.add_argument("-v", "--verbose",    help="Enable verbose output", action="store_true")
+    parser.add_argument("-V", "--version",    dest='version',     default=None,     help=help_version,    action="store_true")
+    
+    args = parser.parse_args()
+    
+    # If requesting version, print and exit
+    if args.version:
+        print( 'dumount version {}'.format(version) )
+        
+    else:
+        # Build sumount command and delegate work to that
+        cmds = ['sumount']
+        if args.mount_point: cmds += ['-m', args.mount_point]
+        if args.verbose    : cmds += ['-v']
+        cmd = ' '.join(cmds)
+        subprocess.call(cmd, shell=True)

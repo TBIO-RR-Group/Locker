@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}Production Run{% endblock %}
+
+{% block main %}
+
+<center><h3>Execute a Production Run on a Server</h3></center>
+
+<form action="locker.cgi" method=POST enctype="multipart/form-data">
+  <div class="form-group">
+    <label id="config_server_username_label">Username:</label>
+    <input type="text" class="form-control" name="config_server_username" id="config_server_username" value="{{ config.username }}"></input>
+  </div>
+  <div class="form-group">
+    <label for="password">Password</label>
+    <input type="password" class="form-control" id="password" name="password" placeholder="Password">
+  </div>
+  <div class="form-group">
+    <label id="config_sshprivkey_label">SSH Private Key File:</label><br>
+    <!-- See here for the file upload button: https://stackoverflow.com/questions/11235206/twitter-bootstrap-form-file-element-upload-button -->
+    <label class="btn btn-primary" for="config_sshprivkey">
+      <input id="config_sshprivkey" name="config_sshprivkey" type="file" style="display:none" onchange="$('#upload-file-info-sshprivkey').text(this.files[0].name)">
+      Browse
+    </label>
+    <span class='label label-info' id="upload-file-info-sshprivkey"></span>
+  </div>
+  <div class="form-group">
+    <label id="config_sshpubkey_label">SSH Public Key File:</label><br>
+    <!-- See here for the file upload button: https://stackoverflow.com/questions/11235206/twitter-bootstrap-form-file-element-upload-button -->
+    <label class="btn btn-primary" for="config_sshpubkey">
+      <input id="config_sshpubkey" name="config_sshpubkey" type="file" style="display:none" onchange="$('#upload-file-info-sshpubkey').text(this.files[0].name)">
+      Browse
+    </label>
+    <span class='label label-info' id="upload-file-info-sshpubkey"></span>
+  </div>
+  <div class="form-group">
+    <label id="config_hostip_label">Server Hostname or IP address:</label>
+    <input type="text" class="form-control" name="config_hostip" id="config_hostip" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_docker_image_label">Docker Image:</label>
+    <input type="text" class="form-control" name="config_docker_image" id="config_docker_image" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_biogit_repo_label">Biogit Repo:</label>
+    <input type="text" class="form-control" name="config_biogit_repo" id="config_biogit_repo" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_biogit_repo_branch_label">Biogit Repo Branch:</label>
+    <input type="text" class="form-control" name="config_biogit_repo_branch" id="config_biogit_repo_branch" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_biogit_repo_release_label">Biogit Repo Release:</label>
+    <input type="text" class="form-control" name="config_biogit_repo_release" id="config_biogit_repo_release" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_master_script_label">Master Script:</label>
+    <input type="text" class="form-control" name="config_master_script" id="config_master_script" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="config_jira_issue_key_label">Jira Issue Key:</label>
+    <input type="text" class="form-control" name="config_jira_issue_key" id="config_jira_issue_key" value=""></input>
+  </div>
+  <span style="display:none"><!-- remove this span to show and enable users to be able to access ECR (in addition to our Docker registry) -->
+  <div class="form-group">
+    <label id="config_awsCredsFile_label">AWS Credentials File:</label>
+    <input type="text" class="form-control" name="config_awsCredsFile"  id="config_awsCredsFile" value="{{ config.config_awsCredsFile }}"></input>
+  </div>
+  <div class="checkbox">
+    <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
+  </div>
+  </span>
+  <button type="submit" class="btn btn-default" name="exec_prod_run" id="exec_prod_run" value="Execute">Execute</button>
+</form>
+
+<script>
+
+function isEmpty(property) {
+      return (property === null || property.trim() === "" || typeof property === "undefined");
+   }
+
+$(document).ready(function(){
+
+   setPageButton('prod_run_btn');
+
+});
+
+</script>
+
+
+{% endblock %}

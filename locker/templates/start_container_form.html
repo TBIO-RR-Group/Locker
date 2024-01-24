@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}Start Container{% endblock %}
+
+{% block main %}
+
+<center><h3>Start Container</h3></center>
+
+<form action="start-container" method=POST>
+  <div class="form-group">
+    <label for="image_tag">Image</label>
+    <input type="text" class="form-control" id="image_tag" disabled value="{{start_info.tag}}" />
+  </div>
+  <div class="form-group">
+    <label for="container_name">Container Name (optional)</label>
+    <a data-toggle="tooltip" class="contname_tooltipLink" title="Container names must start with an alphanumeric and can contain alphanumeric, '_', '.', and '-'"><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="container_name" />
+  </div>
+  <div class="form-group">
+    <label for="main_app">Container Main Application</label>
+    <select class="form-control" name="main_app">
+      <option value="rstudio">RStudio</option>
+      <option value="jupyter">Jupyter</option>
+      <option value="jupyterlab">JupyterLab</option>
+      <option value="vscode">VSCode</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label id="envVarFile_label">Environment Variable File (optional):</label>
+    <a data-toggle="tooltip" class="envvar_tooltipLink" title="A file that contains environment variables ('VAR=VAL' on each line) to be set inside processes inside the container. If this is specified it will take precedence over any globally specified environment variable file on the configuration page. An example one, with practical examples that you can modify and tailor to your own use is stored in your home directory in the .locker directory: .locker/locker.env"><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="envVarFile" id="envVarFile" value=""></input>
+  </div>
+  <div class="form-group">
+    <label id="startupScript_label">Startup Script (optional):</label>
+    <a data-toggle="tooltip" class="startupscript_tooltipLink" title="A file that contains a shell script that will be executed right after container startup but before RStudio and other apps are started. If this is specified it will take precedence over any globally specified startup script on the configuration page. An example one, with practical examples that you can modify and tailor to your own use is stored in your home directory in the .locker directory: .locker/init_locker.sh"><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="text" class="form-control" name="startupScript" id="startupScript" value=""></input>
+  </div>
+  <div class="panel panel-primary">
+    <div class="panel-heading">Repository to Clone (optional)</div>
+    <div class="panel-body">
+      <div class="form-group">
+	<label for="repo_name">Repository URL - https or ssh (ssh preferred)</label>
+	<input type="text" class="form-control" name="repo_uri" />
+      </div>
+      <div class="form-group">
+	<label for="repo_release">Repository Branch or Release</label>
+	<input type="text" class="form-control" name="repo_release" />
+      </div>
+    </div>
+  </div>
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="vscode"> Also Start VSCode ?</label>
+    </div>
+  </div>
+{% for cur_sshfs_mount in start_info.sshfs_mounts %}
+{% if cur_sshfs_mount[7] %}
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" class="mount_type_{{cur_sshfs_mount[1]}}" name="{{cur_sshfs_mount[1]}}" {{cur_sshfs_mount[8]}}> Network Mount {{cur_sshfs_mount[0]}} ?</label>
+    </div>
+  </div>
+{% else %}
+  <div class="form-group" style="display:none">
+  <div class="checkbox">
+    <label><input type="checkbox" class="mount_type_{{cur_sshfs_mount[1]}}" name="{{cur_sshfs_mount[1]}}" {{cur_sshfs_mount[8]}}> Network Mount {{cur_sshfs_mount[0]}} ?</label>
+  </div>
+{% endif %}
+{% if cur_sshfs_mount[1] in start_info.locally_available_sshfs_mounts %}
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" class="mount_type_{{cur_sshfs_mount[1]}}" name="local_{{cur_sshfs_mount[1]}}"> Local Mount {{cur_sshfs_mount[0]}} ?</label>
+    </div>
+  </div>
+{% endif %}
+{% endfor %}
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="enable_gpu"> Enable use of GPU?</label>
+    </div>
+  </div>
+  <div class="form-group">
+    <div class="checkbox">
+      <label><input type="checkbox" name="sibling_cont"> Enable "Sibling Docker Containers" ?</label>
+    </div>
+  </div>
+  <input type="hidden" name="image" value="{{start_info.id}}" />
+  <input type="hidden" name="ssh_pub_key" value="{{start_info.ssh_pub_key}}" />
+  <input type="hidden" name="ssh_priv_key" value="{{start_info.ssh_priv_key}}" />
+  <button type="submit" class="btn btn-default" onclick="showSpinner();">Start</button>
+</form>
+
+<script>
+
+function setupFileSelectAC (jqSelector, searchUrl, ftype = 'BOTH') {
+
+   $( jqSelector ).autocomplete({
+      source: function( request, response ) {
+        $.ajax( {
+          url: searchUrl,
+          dataType: "jsonp",
+          data: {
+            term: request.term,
+            ftype: ftype
+          },
+          success: function( data ) {
+            response( data );
+          }
+        } );
+      },
+      minLength: 0,
+      select: function( event, ui ) {
+        if (!ui.item.isfile) {
+           //See here: https://stackoverflow.com/questions/12984151/trigger-search-from-select-within-jquery-ui-autocomplete
+           var that = $(this);            
+           setTimeout(function() {
+              that.autocomplete("search");
+           }, 1);
+        }
+      }
+    } );
+
+   $( jqSelector ).click(function() {
+      $( jqSelector ).autocomplete('search',this.value);
+   })
+
+}
+
+$( document ).ready(function() {
+   $("a.contname_tooltipLink").tooltip();
+   $("a.envvar_tooltipLink").tooltip();
+   $("a.startupscript_tooltipLink").tooltip();
+   setupFileSelectAC ('#envVarFile', '/paths_ac');
+   setupFileSelectAC ('#startupScript', '/paths_ac');
+
+{% for cur_sshfs_mount in start_info.sshfs_mounts %}
+{% if cur_sshfs_mount[1] in start_info.locally_available_sshfs_mounts %}
+   $('.mount_type_{{cur_sshfs_mount[1]}}').click(function() {
+     $('.mount_type_{{cur_sshfs_mount[1]}}').not(this).prop('checked', false);
+   });
+{% endif %}
+{% endfor %}
+});
+
+
+</script>
+
+<hr>
+<p>Note: for mounting of local cached copies of network drive content you must have <a href="{{ url_for('offline_image_config_start') }}">configured</a> local caching of it.
+
+{% endblock %}
