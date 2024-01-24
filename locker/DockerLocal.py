@@ -587,6 +587,8 @@ def setupDockerCli(contObj,filesFolder):
     cmdRes = execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=False)
     if cmdRes[0] != 0:
         copyIntoContainer2(contObj=contObj,src=os.path.join(filesFolder,'install_docker_ubuntu.sh'),dst='/tmp/install_docker_ubuntu.sh')
+        cmd = "chmod +x /tmp/install_docker_ubuntu.sh"
+        execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
         cmd="/tmp/install_docker_ubuntu.sh"
         execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
 
