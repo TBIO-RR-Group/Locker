@@ -62,20 +62,20 @@ get_creds() {
     PUBKEYKEY_LOC=""
     AWSCREDS_LOC=""
 
-    if [[ -f /host_root$USER_HOMEDIR.locker/.ssh/id_rsa ]]
+    if [[ -f /host_root$USER_HOMEDIR.locker/.ssh/id_privkey ]]
     then
-	PRIVKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_rsa
-    elif [[ -f /host_root$USER_HOMEDIR.ssh/id_rsa ]]
+	PRIVKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_privkey
+    elif [[ -f /host_root$USER_HOMEDIR.ssh/id_privkey ]]
     then
-	PRIVKEY_LOC=$USER_HOMEDIR.ssh/id_rsa
+	PRIVKEY_LOC=$USER_HOMEDIR.ssh/id_privkey
     fi
 
-    if [[ -f /host_root$USER_HOMEDIR.locker/.ssh/id_rsa.pub ]]
+    if [[ -f /host_root$USER_HOMEDIR.locker/.ssh/id_privkey.pub ]]
     then
-	PUBKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_rsa.pub
-    elif [[ -f /host_root$USER_HOMEDIR.ssh/id_rsa.pub ]]
+	PUBKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_privkey.pub
+    elif [[ -f /host_root$USER_HOMEDIR.ssh/id_privkey.pub ]]
     then
-	PUBKEY_LOC=$USER_HOMEDIR.ssh/id_rsa.pub
+	PUBKEY_LOC=$USER_HOMEDIR.ssh/id_privkey.pub
     fi
 
     if [[ -f /host_root$USER_HOMEDIR.locker/.aws/credentials ]]

@@ -35,62 +35,104 @@ template_contents = template_f.read()
 template_f.close()
 
 # Substitute variables in template from config/environment.
-template_contents = re.sub(
-    r'__LOCKER_IMAGE__',
-    config.locker_image,
-    template_contents
-)
-template_contents = re.sub(
-    r'__USABLE_PORTS__',
-    config.usable_ports,
-    template_contents
-)
-template_contents = re.sub(
-    r'__CHECK_CORP_NETWORK_VPN_SERVER__',
-    config.checkCorpNetworkVPNServer,
-    template_contents
-)
-template_contents = re.sub(
-    r'__CONTAINER_USER__',
-    config.containerUser, 
-    template_contents
-)
-template_contents = re.sub(
-    r'__AWS_ACCESS_KEY_ID__',
-    os.environ.get("AWS_ACCESS_KEY_ID"),
-    template_contents
-)
-template_contents = re.sub(
-    r'__AWS_SECRET_ACCESS_KEY__',
-    os.environ.get("AWS_SECRET_ACCESS_KEY"),
-    template_contents
-)
-template_contents = re.sub(
-    r'__AWS_DEFAULT_REGION__',
-    os.environ.get("AWS_DEFAULT_REGION"),
-    template_contents
-)
 
-template_contents = re.sub(
-    r'__http_proxy__',
-    config.proxies["http_proxy"],
-    template_contents
-)
-template_contents = re.sub(
-    r'__https_proxy__',
-    config.proxies["https_proxy"],
-    template_contents
-)
-template_contents = re.sub(
-    r'__ftp_proxy__',
-    config.proxies["ftp_proxy"],
-    template_contents
-)
-template_contents = re.sub(
-    r'__no_proxy__',
-    config.proxies["no_proxy"],
-    template_contents
-)
+#Note for platform == 'win', only config.locker_image is required to be defined.
+#for platform == 'maclinux', that and others are required
+if utils.empty(config.locker_image):
+    print("Error: please define a value for locker_image in configuration file.")
+    sys.exit()
+else:
+    template_contents = re.sub(
+        r'__LOCKER_IMAGE__',
+        config.locker_image,
+        template_contents
+    )
+
+if platform == 'maclinux':
+    if utils.empty(config.usable_ports):
+        print("Error: please define a value for usable_ports in configuration file.")
+        sys.exit()
+    else:
+        template_contents = re.sub(
+            r'__USABLE_PORTS__',
+            config.usable_ports,
+            template_contents
+        )
+
+if not utils.empty(config.checkCorpNetworkVPNServer):
+    template_contents = re.sub(
+        r'__CHECK_CORP_NETWORK_VPN_SERVER__',
+        config.checkCorpNetworkVPNServer,
+        template_contents
+    )
+else:
+    template_contents = re.sub(
+        r'__CHECK_CORP_NETWORK_VPN_SERVER__',
+        "",
+        template_contents
+    )
+
+if platform == 'maclinux':
+    if utils.empty(config.containerUser):
+        print("Error: please define a value for containerUser in configuration file.")
+        sys.exit()
+    else:
+        template_contents = re.sub(
+            r'__CONTAINER_USER__',
+            config.containerUser, 
+            template_contents
+        )
+
+if config.proxies:
+    if not utils.empty(config.proxies["http_proxy"]):
+        template_contents = re.sub(
+            r'__http_proxy__',
+            config.proxies["http_proxy"],
+            template_contents
+        )
+    else:
+        template_contents = re.sub(
+            r'__http_proxy__',
+            "",
+            template_contents
+        )
+
+    if not utils.empty(config.proxies["https_proxy"]):
+        template_contents = re.sub(
+            r'__https_proxy__',
+            config.proxies["https_proxy"],
+            template_contents
+        )
+    else:
+        template_contents = re.sub(
+            r'__https_proxy__',
+            "",
+            template_contents
+        )
+    if not utils.empty(config.proxies["ftp_proxy"]):
+        template_contents = re.sub(
+            r'__ftp_proxy__',
+            config.proxies["ftp_proxy"],
+            template_contents
+        )
+    else:
+        template_contents = re.sub(
+            r'__ftp_proxy__',
+            "",
+            template_contents
+        )
+    if not utils.empty(config.proxies["no_proxy"]):
+        template_contents = re.sub(
+            r'__no_proxy__',
+            config.proxies["no_proxy"],
+            template_contents
+        )
+    else:
+        template_contents = re.sub(
+            r'__no_proxy__',
+            "",
+            template_contents
+        )
 
 print(template_contents)
 

@@ -282,11 +282,11 @@ mkdir -p {rlsd}
     with tempfile.NamedTemporaryFile() as sshprivkey_locker_file:
         sshprivkey_locker_file.write(sshprivkey_locker.encode())
         sshprivkey_locker_file.flush()
-        scp.put(sshprivkey_locker_file.name, remote_locker_sshdir + 'id_rsa', recursive=False)
+        scp.put(sshprivkey_locker_file.name, remote_locker_sshdir + 'id_privkey', recursive=False)
     with tempfile.NamedTemporaryFile() as sshpubkey_locker_file:
         sshpubkey_locker_file.write(sshpubkey_locker.encode())
         sshpubkey_locker_file.flush()
-        scp.put(sshpubkey_locker_file.name, remote_locker_sshdir + 'id_rsa.pub', recursive=False)
+        scp.put(sshpubkey_locker_file.name, remote_locker_sshdir + 'id_privkey.pub', recursive=False)
     scp.close()
 
     pullLatestLockerImageTxt = ""
@@ -1067,3 +1067,11 @@ def getSSOUser():
     insert_validated_cookie(validatedCookiesConn, ssoSession, respValsHash)
 
     return(respValsHash)
+
+def remove_nonprintable_characters(s):
+    # Remove ansi characters
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    cleaned_str = ansi_escape.sub('', s)
+
+    # Remove windows-style line endings (CRLF)
+    return cleaned_str.replace('\r\n', '\n')

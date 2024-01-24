@@ -291,7 +291,6 @@ locker:
     - ^{registryName}/({containerUser}|{repo_name}):ExampleImage-\d\d-\d\d
     - ^({containerUser}|{repo_name}):ExampleImage-\d\d-\d\d
     - ({containerUser}|{repo_name}):ExampleOtherFormat[\-|\_]_other
-    - ^rr*
 
   ## Ignore case when checking the lockerRunnableImageRegexes (True or False)
   lockerRunnableImageRegexesIgnoreCase: True

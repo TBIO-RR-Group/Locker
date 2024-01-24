@@ -1,7 +1,7 @@
 #FROM ubuntu:20.04
 FROM rocker/rstudio
 
-ARG CONTAINER_USER=domino
+ARG CONTAINER_USER=rr_user
 USER root
 
 # Set up Environment

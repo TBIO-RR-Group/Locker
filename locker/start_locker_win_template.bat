@@ -92,20 +92,27 @@ IF NOT EXIST %USER_HOMEDIR%.locker (
    )
 )
 
-IF EXIST %USER_HOMEDIR%.locker\.ssh\id_rsa set PRIVKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_rsa
-IF EXIST %USER_HOMEDIR%.ssh\id_rsa set PRIVKEY_LOC=%USER_HOMEDIR%.ssh\id_rsa
-IF EXIST %USER_HOMEDIR%.locker\.ssh\id_rsa.pub set PUBKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_rsa.pub
-IF EXIST %USER_HOMEDIR%.ssh\id_rsa.pub set PUBKEY_LOC=%USER_HOMEDIR%.ssh\id_rsa.pub
+IF EXIST %USER_HOMEDIR%.locker\.ssh\id_privkey set PRIVKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_privkey
+IF EXIST %USER_HOMEDIR%.ssh\id_privkey set PRIVKEY_LOC=%USER_HOMEDIR%.ssh\id_privkey
+IF EXIST %USER_HOMEDIR%.locker\.ssh\id_privkey.pub set PUBKEY_LOC=%USER_HOMEDIR%.locker\.ssh\id_privkey.pub
+IF EXIST %USER_HOMEDIR%.ssh\id_privkey.pub set PUBKEY_LOC=%USER_HOMEDIR%.ssh\id_privkey.pub
 IF EXIST %USER_HOMEDIR%.locker\.aws\credentials set AWSCREDS_LOC=%USER_HOMEDIR%.locker\.aws\credentials
 IF EXIST %USER_HOMEDIR%.aws\credentials set AWSCREDS_LOC=%USER_HOMEDIR%.aws\credentials
 
 rem convert them into Linux-like paths for inside the container:
-SET ESC_PRIVKEY_LOC=%PRIVKEY_LOC:\=/%
-CALL SET ESC_PRIVKEY_LOC=%%ESC_PRIVKEY_LOC:%ROOT%=%%
-SET ESC_PUBKEY_LOC=%PUBKEY_LOC:\=/%
-CALL SET ESC_PUBKEY_LOC=%%ESC_PUBKEY_LOC:%ROOT%=%%
-SET ESC_AWSCREDS_LOC=%AWSCREDS_LOC:\=/%
-CALL SET ESC_AWSCREDS_LOC=%%ESC_AWSCREDS_LOC:%ROOT%=%%
+IF DEFINED PRIVKEY_LOC (
+   SET ESC_PRIVKEY_LOC=%PRIVKEY_LOC:\=/%
+   CALL SET ESC_PRIVKEY_LOC=%%ESC_PRIVKEY_LOC:%ROOT%=%%
+)
+IF DEFINED PUBKEY_LOC (
+   SET ESC_PUBKEY_LOC=%PUBKEY_LOC:\=/%
+   CALL SET ESC_PUBKEY_LOC=%%ESC_PUBKEY_LOC:%ROOT%=%%
+)
+IF DEFINED AWSCREDS_LOC (
+   SET ESC_AWSCREDS_LOC=%AWSCREDS_LOC:\=/%
+   CALL SET ESC_AWSCREDS_LOC=%%ESC_AWSCREDS_LOC:%ROOT%=%%
+)
+
 IF NOT EXIST %USER_HOMEDIR%.locker\config.json (
    ECHO {"config_sshPrivKeyFile": "%ESC_PRIVKEY_LOC%", "config_sshPubKeyFile": "%ESC_PUBKEY_LOC%", "config_awsCredsFile": "%ESC_AWSCREDS_LOC%", "config_offlineUsageStorage": ""}> %USER_HOMEDIR%.locker\config.json
 )
@@ -127,7 +134,7 @@ SET LOCKER_PORT=5000
 SET DOCKER_HOST_ROOT=%ROOT::=%
 SET DOCKER_HOST_ROOT=/%DOCKER_HOST_ROOT%/
 
-SET PROXY_ENV=--env http_proxy="http://proxy-server.bms.com:8080" --env https_proxy="http://proxy-server.bms.com:8080" --env ftp_proxy="http://proxy-server.bms.com:8080" --env no_proxy="*.bms.com,localhost"
+SET PROXY_ENV=--env http_proxy="__http_proxy__" --env https_proxy="__https_proxy__" --env ftp_proxy="__ftp_proxy__" --env no_proxy="__no_proxy__"
 
 :start_locker
 IF "%LOCAL_OR_REMOTE%"=="l" (

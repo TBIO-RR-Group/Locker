@@ -102,7 +102,7 @@ def smount(mount_point, remote, idpath, password, login):
     # Decide how to connect. Four options:
     # 1. If password provided, log in using given username:password
     # 2. If idpath provided, pass that to sshfs command
-    # 3. If DKEY set and login is not True, generate id_rsa and try to mount
+    # 3. If DKEY set and login is not True, generate id_privkey and try to mount
     # 4. If .ssh/id_stash.pri.bms.com exists, use that as private key
     # 5. If none of the above, ask user for password
     
@@ -110,7 +110,7 @@ def smount(mount_point, remote, idpath, password, login):
 
         # Set and prebuild paths
         sshpath       = '/home/{}/.ssh'.format(uid_name)
-        dkey_idpath   = os.path.join(sshpath, 'id_rsa')
+        dkey_idpath   = os.path.join(sshpath, 'id_privkey')
         ##biogit_idpath = os.path.join(sshpath, 'id_biogit.pri.bms.com')
 
         ## we will collect all ssh keys and try to mount stash, 
@@ -215,7 +215,7 @@ if __name__ == '__main__':
     username = os.environ.get('LOCKER_STARTING_USERNAME', os.environ.get('LOCKER_PROJECT_OWNER', os.environ.get('USERNAME')))
     remote   = '{}@stash.pri.bms.com:/stash'.format(username)
     #workdir  = os.environ.get('LOCKER_WORKING_DIR', '/mnt/{}'.format(username))
-    #idpath = '{}/.bms/ssh/id_rsa'.format(workdir)
+    #idpath = '{}/.bms/ssh/id_privkey'.format(workdir)
     
     # help text
     help_mpoint    = 'Path to mount point. (Default {})'.format(mpoint)
