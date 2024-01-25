@@ -1,6 +1,17 @@
+# Clear $NAME env variable
+undefine NAME
+
 # Import environmental variables
-include .env
+-include .env
 export
+
+# Set default values if no .env file is provided
+PORT ?= 5000
+SERVER_ADMIN ?= andrewsmith_97@yahoo.com
+NAME ?= locker_rr
+VERSION ?= locker_devtest
+REGISTRY ?= dockerreg.example.com:443
+ECR_REGISTRY ?= 483421617021.dkr.ecr.us-east-1.amazonaws.com
 
 # Image build-time arguments
 LOCAL_TAG=${REGISTRY}/${NAME}:${VERSION}
@@ -14,6 +25,7 @@ BUILD_ARGS=\
 	-f Dockerfile .
 
 # Container run-time arguments
+ifneq ($(wildcard .env),)
 AWS_ADMIN_KEY_FILE="/$(shell basename ${AWS_ADMIN_KEY})"
 RUN_ARGS=\
 	--rm \
@@ -24,6 +36,7 @@ RUN_ARGS=\
 	-v ${AWS_ADMIN_KEY}:${AWS_ADMIN_KEY_FILE} \
 	-v ${CERT_FILE}:/etc/ssl/certs/domain.crt \
 	-v ${KEY_FILE}:/etc/ssl/certs/domain.key
+endif
 
 # Build image
 build: 
@@ -57,12 +70,20 @@ dev: build
 # Generate locker start script
 OUTPUT_FILE := /tmp/start_script
 locker-startscript: build
+ifeq ($(wildcard .env),)
+	docker run \
+		--rm \
+		${LOCAL_TAG} \
+		/locker/gen_start_script maclinux > \
+		${OUTPUT_FILE}
+else
 	docker run \
 		--rm \
 		--env-file=.env \
 		${LOCAL_TAG} \
 		/locker/gen_start_script maclinux > \
 		${OUTPUT_FILE}
+endif
 
 # Run Locker
 run-locker: \
