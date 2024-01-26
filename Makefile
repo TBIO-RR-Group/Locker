@@ -1,17 +1,21 @@
-# Clear $NAME env variable
-undefine NAME
-
 # Import environmental variables
--include .env
+# if an .env file is provided
+ifneq ($(wildcard .env),)
+include .env
 export
+ENV_OPTION=--env-file=.env
 
-# Set default values if no .env file is provided
-PORT ?= 5000
-SERVER_ADMIN ?= andrewsmith_97@yahoo.com
-NAME ?= locker_rr
-VERSION ?= locker_devtest
-REGISTRY ?= dockerreg.example.com:443
-ECR_REGISTRY ?= 483421617021.dkr.ecr.us-east-1.amazonaws.com
+# Set default values if .env file
+# is not provided
+else
+PORT=5000
+SERVER_ADMIN=andrewsmith_97@yahoo.com
+NAME=locker_rr
+VERSION=locker_devtest
+REGISTRY=dockerreg.example.com:443
+ECR_REGISTRY=483421617021.dkr.ecr.us-east-1.amazonaws.com
+ENV_OPTION=
+endif
 
 # Image build-time arguments
 LOCAL_TAG=${REGISTRY}/${NAME}:${VERSION}
@@ -25,7 +29,10 @@ BUILD_ARGS=\
 	-f Dockerfile .
 
 # Container run-time arguments
-ifneq ($(wildcard .env),)
+# AWS_ADMIN_KEY, CERT_FILE, and KEY_FILE
+# are required for secure file transfer
+REQUIRED_FILES := $(and $(AWS_ADMIN_KEY), $(CERT_FILE), $(KEY_FILE))
+ifneq ($(REQUIRED_FILES),)
 AWS_ADMIN_KEY_FILE="/$(shell basename ${AWS_ADMIN_KEY})"
 RUN_ARGS=\
 	--rm \
@@ -48,14 +55,23 @@ buildfresh:
 
 # Run locker services
 run-locker-services:
+ifeq ($(REQUIRED_FILES),)
+	@echo "AWS_ADMIN_KEY, CERT_FILE, and KEY_FILE are required for secure file transfer"
+	@exit 1
+endif
 	docker run \
 		--name ${VERSION} \
 		-d \
 		${RUN_ARGS} \
 		${LOCAL_TAG}
 
+
 # Develop interactively
 dev: build
+ifeq ($(REQUIRED_FILES),)
+	@echo "AWS_ADMIN_KEY, CERT_FILE, and KEY_FILE are required for secure file transfer"
+	@exit 1
+endif
 	docker run \
 		--name ${VERSION} \
 		-d \
@@ -70,23 +86,14 @@ dev: build
 # Generate locker start script
 OUTPUT_FILE := /tmp/start_script
 locker-startscript: build
-ifeq ($(wildcard .env),)
 	docker run \
 		--rm \
+		${ENV_OPTION} \
 		${LOCAL_TAG} \
 		/locker/gen_start_script maclinux > \
 		${OUTPUT_FILE}
-else
-	docker run \
-		--rm \
-		--env-file=.env \
-		${LOCAL_TAG} \
-		/locker/gen_start_script maclinux > \
-		${OUTPUT_FILE}
-endif
 
 # Run Locker
 run-locker: \
-	build \
 	locker-startscript
 	bash ${OUTPUT_FILE}
