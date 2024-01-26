@@ -2,6 +2,61 @@
 
 Locker is a Flask app to enable users to easily run specially created interactive Docker images on their local computer or remote server. Locker runs as a Docker container (it uses the "sibling docker containers" idea to start new containers for the special interactive Docker images). You first need to create the Locker Docker image by configuring values for your local setting and then building the image. You can then run Locker directly on a computer --- there are [Makefile](Makefile) targets to run it on Mac/Linux/Win and you can also execute other Makefile targets to generate Locker startup scripts that you can execute to start Locker. You can also setup and use Locker Services, which allows you to have EC2 instances with Locker running on them started for you by filling out web forms. There are Makefile targets for doing all the important actions with Locker and Locker Services, and see below for more details. Note that the code and artifacts for Locker are in the [locker](locker) subdirectory, and the code and artifacts for Locker services are in the [locker_services](locker_services) subdirectory. The below sections discuss setting up and using Locker and Locker Services; you can also see the [PDF documentation](Locker_Overview_Documentation.pdf) for more details (e.g. screenshots of Locker and Locker Services UI, etc.)
 
+## Quickstart Locker
+
+Follow these instructions to quickly get Locker up and running on your local computer. Note that these instructions are for running Locker directly on a computer, not using Locker Services to start EC2 instances with Locker running on them.
+
+### Mac/linux
+
+For Mac and Linux, you can use the Makefile to build the Locker image and start Locker. First, ensure you have the [dependencies](#dependencies) installed. Then, follow the steps below in the terminal.
+
+1. Clone this repository to your computer and move into the Locker directory:
+
+    ```bash
+    git clone https://github.com/TBIO-RR-Group/Locker.git
+    cd Locker
+    ```
+
+2. Build the Locker Simple Image to use with Locker:
+
+    ```bash
+    ./locker/LockerSimpleImage/build_image.sh
+    ```
+
+3. Build and run Locker:
+
+    ```bash
+    make run-locker
+    ```
+
+Navigate to http://localhost:5000 to access Locker.
+
+
+### Windows
+
+For Windows, if you have [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) (WSL) installed, you can use the Makefile to build the Locker image and start Locker by following the [Mac/linux](#maclinux) instructions. First, ensure you have the [dependencies](#dependencies) installed. Then, follow the steps below in Powershell.
+
+1. Clone this repository to your computer and move into the Locker directory:
+
+    ```powershell
+    git clone https://github.com/TBIO-RR-Group/Locker.git
+    cd Locker
+    ```
+
+2. Build the Locker Simple Image to use with Locker:
+
+    ```powershell
+    .\locker\LockerSimpleImage\build_image.bat
+    ```
+
+3. Build and run Locker:
+
+    ```powershell
+    .\build_and_run_win.bat
+    ```
+
+Navigate to http://localhost:5000 to access Locker.
+
 ## Creating Special Interactive Docker Images for use with Locker
 
 Docker images must be specially created to work with Locker, in particular you need to install the interactive apps that Locker works with: RStudio, Jupyter, Jupyterlab, and VSCode (sshd is also required for ssh access to started containers; note that Locker uses [Supervisord](http://supervisord.org/) to run and manage multiple processes inside started containers). We provide a [simple, "bare bones" example Dockerfile](locker/LockerSimpleImage) that you can use as a starting point --- you could easily enhance this with additional installs (R and Python packages, apt installs, etc.) Alternatively, within our company we created a special process and system to aid us in creating these Docker images and we have also released that at [DockerImageBuilder repo](https://github.com/TBIO-RR-Group/DockerImageBuilder).
@@ -23,7 +78,7 @@ Before you can run Locker or Locker services you need to create the Docker image
 1. Clone this repository to your server:
 
     ```bash
-    git clone <repo.git>
+    git clone https://github.com/TBIO-RR-Group/Locker.git
     ```
 
 2. Update the values in config.yml with your own values. Then create a `.env` file in the same directory as the `Makefile`. Then copy the following environmental variables and replace them with your own values.
@@ -69,6 +124,12 @@ Follow the [setup instructions](#setting-up-locker-services) and then run `make 
 
 ## Dependencies
 
+### Locker
+- Docker
+- GNU Make (Mac/Linux/WSL)
+- Git
+
+### Locker Serivces
 To run Locker Services, you must have the following dependencies installed:
 
 - Linux server
