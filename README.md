@@ -34,7 +34,7 @@ Navigate to http://localhost:5000 to access Locker.
 
 ### Windows
 
-For Windows, if you have [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) (WSL) installed, you can use the Makefile to build the Locker image and start Locker by following the [Mac/linux](#maclinux) instructions. First, ensure you have the [dependencies](#dependencies) installed. Then, follow the steps below in Powershell.
+For Windows, if you have [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) (WSL) installed, you can use the Makefile to build the Locker image and start Locker by following the [Mac/linux](#maclinux) instructions. To run without directly on Windows without WSL, ensure you have the [dependencies](#dependencies) installed and follow the steps below in Powershell.
 
 1. Clone this repository to your computer and move into the Locker directory:
 
