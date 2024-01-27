@@ -20,7 +20,7 @@ For Mac and Linux, you can use the Makefile to build the Locker image and start 
 2. Build the Locker Simple Image to use with Locker:
 
     ```bash
-    ./locker/LockerSimpleImage/build_image.sh
+    docker build --platform linux/amd64 -t rr:LockerSimpleImage -f "./locker/LockerSimpleImage/Dockerfile" "./locker/LockerSimpleImage/."
     ```
 
 3. Build and run Locker:
@@ -46,7 +46,7 @@ For Windows, if you have [Windows Subsystem for Linux](https://docs.microsoft.co
 2. Build the Locker Simple Image to use with Locker:
 
     ```powershell
-    .\locker\LockerSimpleImage\build_image.bat
+    docker build --platform linux/amd64 -t rr:LockerSimpleImage -f "./locker/LockerSimpleImage/Dockerfile" "./locker/LockerSimpleImage/."
     ```
 
 3. Build and run Locker:
