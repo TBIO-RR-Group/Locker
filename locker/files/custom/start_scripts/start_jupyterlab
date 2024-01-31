@@ -10,7 +10,7 @@ c = get_config()
 c.NotebookApp.root_dir = '/'
 c.NotebookApp.preferred_dir = '${HOME}'
 c.NotebookApp.tornado_settings = {'headers': {'Content-Security-Policy': 'frame-ancestors *'}}
-c.NotebookApp.default_url = '/lab/tree${LOCKER_WORKING_DIR}'
+c.NotebookApp.default_url = '/lab/tree${!LOCKER_WORKING_DIR_VAR}'
 c.NotebookApp.token = u''
 EOF
 

@@ -2,4 +2,4 @@
 
 #The update as of Apr 2021 was not working right because was only accepting connections from localhost, had to change to --host=0.0.0.0
 #See here: https://github.com/microsoft/vscode-remote-release/issues/764
-code-server ${LOCKER_WORKING_DIR} --user-data-dir ${LOCKER_WORKING_DIR}/vscode-settings --auth none --host=0.0.0.0 --port ${1:-8888} --disable-telemetry --extensions-dir ${HOME}/.local/share/code-server/extensions
+code-server ${!LOCKER_WORKING_DIR_VAR} --user-data-dir ${!LOCKER_WORKING_DIR_VAR}/vscode-settings --auth none --host=0.0.0.0 --port ${1:-8888} --disable-telemetry --extensions-dir ${HOME}/.local/share/code-server/extensions
