@@ -90,7 +90,7 @@ def getEnvVar(varName):
     if varVal is None:
        return('')
     else:
-    	return(varVal)
+       return(varVal)
 
 def execRemoteSudoCmd(sudo_cmd, hostname, server_username, sshprivkey=None, password=None):
 
@@ -486,9 +486,12 @@ def current_ec2_pricing(instance_type = None, region='us-east-1', os='Linux', pr
               for price_dimensions in on_demand['priceDimensions'].values():
                   roundTo = 2
                   ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
-                  while ppu <= 0.0:
-                      roundTo = roundTo + 1
-                      ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
+                  if float(price_dimensions['pricePerUnit']['USD']) != 0:
+                      while ppu <= 0.0:
+                          roundTo = roundTo + 1
+                          ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
+                  else:
+                      ppu = "Unavailable"
                   instPricingInfo[instType] = { 
                       'region': region, 
                       'os': os, 
