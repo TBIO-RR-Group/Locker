@@ -5,6 +5,8 @@
 # MFR 4/4/2018
 
 import os, os.path, argparse, subprocess
+from Config import Config
+config = Config('/config.yml')
 
 # --- global settings
 version = "0.1.0"
@@ -14,7 +16,7 @@ if __name__ == '__main__':
     
     # Create defaults
     mpoint   = '/ds'
-    username = os.environ.get('LOCKER_STARTING_USERNAME', os.environ.get('LOCKER_PROJECT_OWNER', os.environ.get('USERNAME')))
+    username = os.environ.get(config.env_vars['LOCKER_STARTING_USERNAME'], os.environ.get(config.env_vars['LOCKER_PROJECT_OWNER'], os.environ.get('USERNAME')))
     remote   = '{}@stash.pri.bms.com:/ds'.format(username)
     
     # help text

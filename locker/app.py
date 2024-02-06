@@ -23,6 +23,7 @@ from werkzeug.utils import secure_filename
 from pathlib import Path
 from Config import Config
 import SiteMinder
+import textwrap
 #import logging
 
 # Load locker configuration
@@ -1112,12 +1113,109 @@ def stopNonConfiguringOfflineEnableConts():
             del offlineImageConfigInfo[curImageTag]
             print("Deleted for image: " + curImageTag)
 
+# Write a function to dynamically generate supervisord scripts
+# depending on the requested services.
+def genSupervisordConf(services, supervisord_conf_file_path):
+    """
+    Generate a supervisord conf file for the services requested.
+    """
+    # Import "global" config variables
+    try:
+        config = Config("/config.yml")
+    except Exception as e:
+        raise Exception('Error getting config in genSupervisordConf: ' + str(e))
+    
+    # Define environment variable names and values
+    WORKING_DIR_VAR=config.env_vars["LOCKER_WORKING_DIR"]
+    PROJECT_OWNER_VAR=config.env_vars["LOCKER_PROJECT_OWNER"]
+    STARTING_USERNAME_VAR=config.env_vars["LOCKER_STARTING_USERNAME"]
+
+    # Base supervisord config with sshd
+    base = f"""
+    [supervisord]
+    nodaemon=true
+    environment=HOME="%(ENV_HOME)s",{WORKING_DIR_VAR}="%(ENV_{WORKING_DIR_VAR})s",{PROJECT_OWNER_VAR}="%(ENV_{PROJECT_OWNER_VAR})s",{STARTING_USERNAME_VAR}="%(ENV_{STARTING_USERNAME_VAR})s"
+    logfile=/var/log/supervisor/supervisord.log
+
+    [program:sshd]
+    command=/usr/sbin/sshd -D
+    """
+
+    # Jupyter
+    jupyter = f"""
+    [program:jupyter]
+    user=%(ENV_USER)s
+    command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyter'
+    stdout_logfile=/var/log/supervisor/%(program_name)s.log
+    stderr_logfile=/var/log/supervisor/%(program_name)s.log
+    startsecs=0
+    autorestart=false
+    """
+
+    # JupyterLab
+    jupyterlab = f"""
+    [program:jupyterlab]
+    user=%(ENV_USER)s
+    command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyterlab'
+    stdout_logfile=/var/log/supervisor/%(program_name)s.log
+    stderr_logfile=/var/log/supervisor/%(program_name)s.log
+    startsecs=0
+    autorestart=false
+    """
+
+    # RStudio
+    rstudio = f"""
+    [program:rserver]
+    user=%(ENV_USER)s
+    command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_rstudio 8888'
+    stdout_logfile=/var/log/supervisor/%(program_name)s.log
+    stderr_logfile=/var/log/supervisor/%(program_name)s.log
+    startsecs=0
+    autorestart=false
+    """
+
+    # VSCode
+    vscode = f"""
+    [program:vscode]
+    user=%(ENV_USER)s
+    command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_vscode 8887'
+    stdout_logfile=/var/log/supervisor/%(program_name)s.log
+    stderr_logfile=/var/log/supervisor/%(program_name)s.log
+    startsecs=0
+    autorestart=false
+    """
+
+    # Add services to the base config
+    if "jupyter" in services:
+        base += jupyter
+    if "jupyterlab" in services:
+        base += jupyterlab
+    if "rstudio" in services:
+        base += rstudio
+    if "vscode" or "_vscode" in services:
+        base += vscode
+
+    # Write the config to a file
+    try:
+        with open(supervisord_conf_file_path, "w") as file:
+            base = textwrap.dedent(base)
+            file.write(base)
+    except Exception as e:
+        raise Exception('Error writing supervisord conf file in genSupervisordConf: ' + str(e))
+
+
 def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None):
     try:
         config = utils.readConfig(config_file_path)
         config_values = utils.readUserConfigValues(config_file_path=config_file_path)
     except Exception as e:
         raise Exception('Error getting config in start_containerFunc: ' + str(e))
+
+    # Import "global" config variables
+    try:
+        lockerConfig = Config("/config.yml")
+    except Exception as e:
+        raise Exception('Error getting lockerConfig in start_containerFunc: ' + str(e))
 
     sshPrivKeyFile = None
     sshPubKeyFile = None
@@ -1181,7 +1279,10 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     else:
         vscode = ''
 
+    # Generate supervisord conf file
     supervisord_conf_file_name = f'supervisord_{main_app}{vscode}.conf'
+    supervisord_conf_file_path = os.path.join(app.config['FILES_PATH'],supervisord_conf_file_name)
+    genSupervisordConf([main_app, vscode], supervisord_conf_file_path)
 
     try:
         docker_client = DockerLocal.getDockerClient()
@@ -1190,7 +1291,19 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     curUser = runAsUser
     ep = ['/bin/bash']
-    the_env = ["DOCKER_RUN=True",f"LOCKER_WORKING_DIR={containerUserHomedir}",f'LOCKER_PROJECT_OWNER={curUser}',f'LOCKER_STARTING_USERNAME={curUser}',f"USER={containerUser}",f"HOME={containerUserHomedir}",f'DOCKER_HOST_SERVER={host}',f'DOCKER_HOST_USER={hostUser}']
+    the_env = [
+        "DOCKER_RUN=True",
+        f"LOCKER_WORKING_DIR_VAR={lockerConfig.env_vars['LOCKER_WORKING_DIR']}",
+        f"LOCKER_PROJECT_OWNER_VAR={lockerConfig.env_vars['LOCKER_PROJECT_OWNER']}",
+        f"LOCKER_STARTING_USERNAME_VAR={lockerConfig.env_vars['LOCKER_STARTING_USERNAME']}",
+        f"{lockerConfig.env_vars['LOCKER_WORKING_DIR']}={containerUserHomedir}",
+        f"{lockerConfig.env_vars['LOCKER_PROJECT_OWNER']}={curUser}",
+        f"{lockerConfig.env_vars['LOCKER_STARTING_USERNAME']}={curUser}",
+        f"USER={containerUser}",
+        f"HOME={containerUserHomedir}",
+        f'DOCKER_HOST_SERVER={host}',
+        f'DOCKER_HOST_USER={hostUser}'
+    ]
 
     if not utils.empty(tzEnv):
         the_env.append('TZ=' + tzEnv)
@@ -1236,7 +1349,7 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     except Exception as e:
         raise Exception('Error starting (and reloading attrs for) the new Docker container in start_containerFunc: ' + str(e))
 
-    copyIntoContainerPaths= { os.path.join(app.config['FILES_PATH'],'supervisord', f'{supervisord_conf_file_name}'): f'/etc/supervisor/conf.d/{supervisord_conf_file_name}',
+    copyIntoContainerPaths= { supervisord_conf_file_path: f'/etc/supervisor/conf.d/{supervisord_conf_file_name}',
                               os.path.join(app.config['FILES_PATH'],'custom'): '/var/opt/workspaces/',
                               os.path.join(app.config['FILES_PATH'],'paths_ac.py'): '/tmp/paths_ac.py'}
 

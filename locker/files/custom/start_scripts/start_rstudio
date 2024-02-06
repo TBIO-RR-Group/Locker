@@ -14,7 +14,7 @@ printenv >> ~/.Renviron
 
 # Set initial working directory, which is the directory RStudio opens up to
 mkdir -p ~/.rstudio/monitored/user-settings/
-echo -e "initialWorkingDirectory=\"${DRT_WORKING_DIR:-"${LOCKER_WORKING_DIR}"}\"\n" >> ~/.rstudio/monitored/user-settings/user-settings
+echo -e "initialWorkingDirectory=\"${DRT_WORKING_DIR:-"${!LOCKER_WORKING_DIR_VAR}"}\"\n" >> ~/.rstudio/monitored/user-settings/user-settings
 
 sudo chown -R $USER:$USER /var/lib/rstudio-server
 

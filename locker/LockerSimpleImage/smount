@@ -5,6 +5,8 @@
 # MFR 5/30/2018
 
 import os, os.path, subprocess, argparse, re, pwd, grp
+from Config import Config
+config = Config('/config.yml')
 
 # --- global settings
 version = "0.4.0"
@@ -212,7 +214,7 @@ if __name__ == '__main__':
     
     # Create defaults
     mpoint   = '/stash'
-    username = os.environ.get('LOCKER_STARTING_USERNAME', os.environ.get('LOCKER_PROJECT_OWNER', os.environ.get('USERNAME')))
+    username = os.environ.get(config.env_vars['LOCKER_STARTING_USERNAME'], os.environ.get(config.env_vars['LOCKER_PROJECT_OWNER'], os.environ.get('USERNAME')))
     remote   = '{}@stash.pri.bms.com:/stash'.format(username)
     #workdir  = os.environ.get('LOCKER_WORKING_DIR', '/mnt/{}'.format(username))
     #idpath = '{}/.bms/ssh/id_privkey'.format(workdir)

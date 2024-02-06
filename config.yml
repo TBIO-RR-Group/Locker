@@ -165,6 +165,19 @@ locker:
   locker_admins: 
     - 'admin_userid1'
 
+  ## Environmental variables to set in started containers
+  ## Downstream systems may require specific names for
+  ## environment variables.  This is a list of those variables.
+  ## The format is:
+  ##   - ENV_VAR_NAME: ENV_VAR_VALUE
+  ## The values of these variables are set by locker
+  ## when the container is started.
+  env_vars:
+    LOCKER_STARTING_USERNAME: "LOCKER_STARTING_USERNAME"
+    LOCKER_PROJECT_OWNER: "LOCKER_PROJECT_OWNER"
+    LOCKER_WORKING_DIR: "LOCKER_WORKING_DIR"
+    
+
   ## Configuration of network drives to mount using sshfs:
   ## Format of each record is: [<DESCRIPTIVE_NAME>,<ID>,<HOSTNAME>,<PATH_AT_HOSTNAME>,<CONTAINER_MOUNT_POINT>,<USER_AT_HOSTNAME>,<VPN_OR_CORPORATE_NETWORK_REQUIRED_TO_MOUNT>,<SHOW_MOUNT_OPTION_CHECKBOX>,<MOUNT_OPTION_DEFAULT>]
   ## <DESCRIPTIVE_NAME>: If empty or none, will default to <HOSTNAME>; label of checkbox where user can check to mount or not (e.g. 'mount Stash?')
