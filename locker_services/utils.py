@@ -549,7 +549,7 @@ def getInstanceTypes(ami_id=None):
         inst_type_name_to_desc = cacheReadObj[1]
         return (ret_instance_types,inst_type_name_to_desc)
 
-    checkCommonInstTypesList = [ 't3a.large', 'm5a.large', 'm4.xlarge', 'm4.2xlarge', 'm4.4xlarge', 'r5a.4xlarge', 'i3.8xlarge', 'm5n.24xlarge' ]
+    checkCommonInstTypesList = config.EC2_COMMON_INST_TYPES
     checkCommonInstTypesSet = set(checkCommonInstTypesList)
     common_instance_types_found = {}
     common_instance_types = []

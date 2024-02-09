@@ -74,6 +74,18 @@ locker_services:
   AMI_USER: "ec2-user"
   AMI_USER_HOMEDIR: "/home01/ec2-user"
 
+  ## Define the commonly used instance types list that appears
+  ## on the page when starting a new EC2 instance.
+  EC2_COMMON_INST_TYPES:
+    - 't3a.large'
+    - 'm5a.large'
+    - 'm4.xlarge'
+    - 'm4.2xlarge'
+    - 'm4.4xlarge'
+    - 'r5a.4xlarge'
+    - 'i3.8xlarge'
+    - 'm5n.24xlarge'
+
   ## Extra tags that will be added to the tags of started EC2 instances
   ## as key-value pairs.
   ## Example:
