@@ -152,8 +152,14 @@ cat <<EOF >> ${USER_HOMEDIR}.locker/init_locker.sh
 #!/bin/bash
 
 ###
-# Environment variables interpolated and used below (change these to suit
-# yourself):
+# Environment variables used below (change these to suit yourself).
+# NAME: Set to your actual name; will be used to configure your name by
+#    git
+# EMAIL: Set to your own email address; will be used to configure your
+#    email by git
+# HOMEDIR: Set to the home directory of the user running Locker on the
+#    host machine. If you are running Locker on a Locker Server, this
+#    typically is “/home01/ec2-user”.
 ###
 NAME=${USERNAME}
 EMAIL=${GIT_EMAIL}
