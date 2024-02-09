@@ -160,6 +160,9 @@ EMAIL=${GIT_EMAIL}
 HOMEDIR=${USER_HOMEDIR}
 
 
+EOF
+
+cat <<'EOF' >> ${USER_HOMEDIR}.locker/init_locker.sh
 ###
 # Following lines setup the use of a persistent RStudio preferences file
 # (rstudio-prefs.json) on your Docker host:
