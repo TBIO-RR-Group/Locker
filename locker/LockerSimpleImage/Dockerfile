@@ -1,14 +1,14 @@
 #FROM ubuntu:20.04
 FROM rocker/rstudio
 
-ARG CONTAINER_USER=domino
+ARG CONTAINER_USER=rr_user
 USER root
 
 # Set up Environment
-ARG http_proxy=http://proxy-server.bms.com:8080
-ARG https_proxy=http://proxy-server.bms.com:8080
-ARG ftp_proxy=http://proxy-server.bms.com:8080
-ARG no_proxy=.bms.com,169.254.169.254,localhost,.celgene.com
+#ARG http_proxy=http://proxy.example.com:8000
+#ARG https_proxy=http://proxy.example.com:8000
+#ARG ftp_proxy=http://proxy.example.com:8000
+#ARG no_proxy=localhost,.example.com
 
 ARG DEBIAN_FRONTEND=noninteractive
 

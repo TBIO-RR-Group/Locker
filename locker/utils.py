@@ -223,8 +223,8 @@ def guessConfig(config,user_homedir_in=None):
             user_homedir = '/host_root' + user_homedir_in
         else:
             user_homedir = user_homedir_in
-        privkey_path = os.path.join(user_homedir,'.ssh','id_rsa')
-        pubkey_path = os.path.join(user_homedir,'.ssh','id_rsa.pub')
+        privkey_path = os.path.join(user_homedir,'.ssh','id_privkey')
+        pubkey_path = os.path.join(user_homedir,'.ssh','id_privkey.pub')
         awscreds_path = os.path.join(user_homedir, '.aws','credentials')
         if os.path.exists(privkey_path) and (not 'config_sshPrivKeyFile' in config or empty(config['config_sshPrivKeyFile'])):
             config['config_sshPrivKeyFile'] = privkey_path.removeprefix('/host_root')

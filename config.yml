@@ -74,6 +74,18 @@ locker_services:
   AMI_USER: "ec2-user"
   AMI_USER_HOMEDIR: "/home01/ec2-user"
 
+  ## Define the commonly used instance types list that appears
+  ## on the page when starting a new EC2 instance.
+  EC2_COMMON_INST_TYPES:
+    - 't3a.large'
+    - 'm5a.large'
+    - 'm4.xlarge'
+    - 'm4.2xlarge'
+    - 'm4.4xlarge'
+    - 'r5a.4xlarge'
+    - 'i3.8xlarge'
+    - 'm5n.24xlarge'
+
   ## Extra tags that will be added to the tags of started EC2 instances
   ## as key-value pairs.
   ## Example:
@@ -164,6 +176,19 @@ locker:
   ## started containers services, etc. for debugging and help
   locker_admins: 
     - 'admin_userid1'
+
+  ## Environmental variables to set in started containers
+  ## Downstream systems may require specific names for
+  ## environment variables.  This is a list of those variables.
+  ## The format is:
+  ##   - ENV_VAR_NAME: ENV_VAR_VALUE
+  ## The values of these variables are set by locker
+  ## when the container is started.
+  env_vars:
+    LOCKER_STARTING_USERNAME: "LOCKER_STARTING_USERNAME"
+    LOCKER_PROJECT_OWNER: "LOCKER_PROJECT_OWNER"
+    LOCKER_WORKING_DIR: "LOCKER_WORKING_DIR"
+    
 
   ## Configuration of network drives to mount using sshfs:
   ## Format of each record is: [<DESCRIPTIVE_NAME>,<ID>,<HOSTNAME>,<PATH_AT_HOSTNAME>,<CONTAINER_MOUNT_POINT>,<USER_AT_HOSTNAME>,<VPN_OR_CORPORATE_NETWORK_REQUIRED_TO_MOUNT>,<SHOW_MOUNT_OPTION_CHECKBOX>,<MOUNT_OPTION_DEFAULT>]
@@ -291,6 +316,7 @@ locker:
     - ^{registryName}/({containerUser}|{repo_name}):ExampleImage-\d\d-\d\d
     - ^({containerUser}|{repo_name}):ExampleImage-\d\d-\d\d
     - ({containerUser}|{repo_name}):ExampleOtherFormat[\-|\_]_other
+    - ^rr*
 
   ## Ignore case when checking the lockerRunnableImageRegexes (True or False)
   lockerRunnableImageRegexesIgnoreCase: True

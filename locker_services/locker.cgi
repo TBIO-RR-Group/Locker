@@ -78,6 +78,7 @@ if 'stage' in arguments:
    stage = arguments['stage'].value
 if 'config_sshprivkey' in arguments:
    sshprivkey = arguments['config_sshprivkey'].value
+   sshprivkey = utils.remove_nonprintable_characters(sshprivkey)
    if utils.empty(sshprivkey):
       sshprivkey = None
 if 'password' in arguments:
@@ -394,14 +395,14 @@ EOM
 #'''.format(smuser,sshprivkey.rstrip(),smuser,mountPath,mountPath,smuser,locker_config.NETWORK_HOMEDIR_HOST,hostPath,mountPath,smuser)
 
             bashScriptTxt2 = '''\
-cat > ~/.ssh/id_rsa_{} <<- EOM
+cat > ~/.ssh/id_privkey_{} <<- EOM
 {}
 EOM
 
-chmod 0600 ~/.ssh/id_rsa_{}
+chmod 0600 ~/.ssh/id_privkey_{}
 sudo mkdir -p {}
 sudo chown {}:{} {}
-sudo bash -c 'echo "{}@{}:{} {} fuse.sshfs x-systemd.automount,_netdev,IdentityFile={}/.ssh/id_rsa_{},allow_other,reconnect 0 0" >> /etc/fstab'
+sudo bash -c 'echo "{}@{}:{} {} fuse.sshfs x-systemd.automount,_netdev,StrictHostKeyChecking=no,IdentityFile={}/.ssh/id_privkey_{},allow_other,reconnect 0 0" >> /etc/fstab'
 sudo mount -a
 '''.format(smuser,sshprivkey.rstrip(),smuser,mountPath,locker_config.AMI_USER, locker_config.AMI_USER, mountPath,smuser,locker_config.NETWORK_HOMEDIR_HOST,hostPath,mountPath,locker_config.AMI_USER_HOMEDIR, smuser)
 

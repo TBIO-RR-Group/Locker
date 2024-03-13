@@ -14,9 +14,6 @@ CHECK_CORP_NETWORK_VPN_SERVER=__CHECK_CORP_NETWORK_VPN_SERVER__
 
 # Pass in additional variables from config.yml
 CONTAINER_USER=__CONTAINER_USER__
-AWS_ACCESS_KEY_ID=__AWS_ACCESS_KEY_ID__
-AWS_SECRET_ACCESS_KEY=__AWS_SECRET_ACCESS_KEY__
-AWS_DEFAULT_REGION=__AWS_DEFAULT_REGION__
 http_proxy=__http_proxy__
 https_proxy=__https_proxy__
 ftp_proxy=__ftp_proxy__
@@ -115,20 +112,20 @@ get_creds() {
     PUBKEYKEY_LOC=""
     AWSCREDS_LOC=""
 
-    if [[ -f $USER_HOMEDIR.locker/.ssh/id_rsa ]]
+    if [[ -f $USER_HOMEDIR.locker/.ssh/id_privkey ]]
     then
-	PRIVKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_rsa
-    elif [[ -f $USER_HOMEDIR.ssh/id_rsa ]]
+	PRIVKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_privkey
+    elif [[ -f $USER_HOMEDIR.ssh/id_privkey ]]
     then
-	PRIVKEY_LOC=$USER_HOMEDIR.ssh/id_rsa
+	PRIVKEY_LOC=$USER_HOMEDIR.ssh/id_privkey
     fi
 
-    if [[ -f $USER_HOMEDIR.locker/.ssh/id_rsa.pub ]]
+    if [[ -f $USER_HOMEDIR.locker/.ssh/id_privkey.pub ]]
     then
-	PUBKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_rsa.pub
-    elif [[ -f $USER_HOMEDIR.ssh/id_rsa.pub ]]
+	PUBKEY_LOC=$USER_HOMEDIR.locker/.ssh/id_privkey.pub
+    elif [[ -f $USER_HOMEDIR.ssh/id_privkey.pub ]]
     then
-	PUBKEY_LOC=$USER_HOMEDIR.ssh/id_rsa.pub
+	PUBKEY_LOC=$USER_HOMEDIR.ssh/id_privkey.pub
     fi
 
     if [[ -f $USER_HOMEDIR.locker/.aws/credentials ]]
@@ -155,14 +152,23 @@ cat <<EOF >> ${USER_HOMEDIR}.locker/init_locker.sh
 #!/bin/bash
 
 ###
-# Environment variables interpolated and used below (change these to suit
-# yourself):
+# Environment variables used below (change these to suit yourself).
+# NAME: Set to your actual name; will be used to configure your name by
+#    git
+# EMAIL: Set to your own email address; will be used to configure your
+#    email by git
+# HOMEDIR: Set to the home directory of the user running Locker on the
+#    host machine. If you are running Locker on a Locker Server, this
+#    typically is “/home01/ec2-user”.
 ###
 NAME=${USERNAME}
 EMAIL=${GIT_EMAIL}
 HOMEDIR=${USER_HOMEDIR}
 
 
+EOF
+
+cat <<'EOF' >> ${USER_HOMEDIR}.locker/init_locker.sh
 ###
 # Following lines setup the use of a persistent RStudio preferences file
 # (rstudio-prefs.json) on your Docker host:
@@ -203,9 +209,9 @@ if ! [ -e ${USER_HOMEDIR}.locker/locker.env ]
 then
 cat <<EOF >> ${USER_HOMEDIR}.locker/locker.env
 R_LIBS_USER=/host_root/${USER_HOMEDIR}/.locker/R_LIBS_USER/
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=...
 EOF
 fi
 

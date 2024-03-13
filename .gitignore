@@ -1,0 +1,5 @@
+.env
+.vscode
+*.rsa
+*__pycache__*
+locker_services/download/*

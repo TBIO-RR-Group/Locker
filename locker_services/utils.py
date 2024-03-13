@@ -90,7 +90,7 @@ def getEnvVar(varName):
     if varVal is None:
        return('')
     else:
-    	return(varVal)
+       return(varVal)
 
 def execRemoteSudoCmd(sudo_cmd, hostname, server_username, sshprivkey=None, password=None):
 
@@ -282,11 +282,11 @@ mkdir -p {rlsd}
     with tempfile.NamedTemporaryFile() as sshprivkey_locker_file:
         sshprivkey_locker_file.write(sshprivkey_locker.encode())
         sshprivkey_locker_file.flush()
-        scp.put(sshprivkey_locker_file.name, remote_locker_sshdir + 'id_rsa', recursive=False)
+        scp.put(sshprivkey_locker_file.name, remote_locker_sshdir + 'id_privkey', recursive=False)
     with tempfile.NamedTemporaryFile() as sshpubkey_locker_file:
         sshpubkey_locker_file.write(sshpubkey_locker.encode())
         sshpubkey_locker_file.flush()
-        scp.put(sshpubkey_locker_file.name, remote_locker_sshdir + 'id_rsa.pub', recursive=False)
+        scp.put(sshpubkey_locker_file.name, remote_locker_sshdir + 'id_privkey.pub', recursive=False)
     scp.close()
 
     pullLatestLockerImageTxt = ""
@@ -486,9 +486,12 @@ def current_ec2_pricing(instance_type = None, region='us-east-1', os='Linux', pr
               for price_dimensions in on_demand['priceDimensions'].values():
                   roundTo = 2
                   ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
-                  while ppu <= 0.0:
-                      roundTo = roundTo + 1
-                      ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
+                  if float(price_dimensions['pricePerUnit']['USD']) != 0:
+                      while ppu <= 0.0:
+                          roundTo = roundTo + 1
+                          ppu = round(float(price_dimensions['pricePerUnit']['USD']),roundTo)
+                  else:
+                      ppu = "Unavailable"
                   instPricingInfo[instType] = { 
                       'region': region, 
                       'os': os, 
@@ -546,7 +549,7 @@ def getInstanceTypes(ami_id=None):
         inst_type_name_to_desc = cacheReadObj[1]
         return (ret_instance_types,inst_type_name_to_desc)
 
-    checkCommonInstTypesList = [ 'm4.xlarge', 'm4.2xlarge', 'm4.4xlarge', 'r5a.4xlarge', 'i3.8xlarge', 'm5n.24xlarge' ]
+    checkCommonInstTypesList = config.EC2_COMMON_INST_TYPES
     checkCommonInstTypesSet = set(checkCommonInstTypesList)
     common_instance_types_found = {}
     common_instance_types = []
@@ -1067,3 +1070,11 @@ def getSSOUser():
     insert_validated_cookie(validatedCookiesConn, ssoSession, respValsHash)
 
     return(respValsHash)
+
+def remove_nonprintable_characters(s):
+    # Remove ansi characters
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    cleaned_str = ansi_escape.sub('', s)
+
+    # Remove windows-style line endings (CRLF)
+    return cleaned_str.replace('\r\n', '\n')
