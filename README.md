@@ -129,7 +129,7 @@ Follow the [setup instructions](#setting-up-locker-services) and then run `make 
 - GNU Make (Mac/Linux/WSL)
 - Git
 
-### Locker Serivces
+### Locker Services
 To run Locker Services, you must have the following dependencies installed:
 
 - Linux server
