@@ -74,7 +74,7 @@
       caseSensitive: false,
       formatters: {
         "actions": function (column, row) {
-          var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id
+          var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
           if (row.state == 'running') {
             var stop_link = "locker.cgi?a=stop_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
             return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
