@@ -1,17 +1,27 @@
 #!/bin/bash
 set -o nounset -o errexit
 
+# Set R_HOME and LD_LIBRARY_PATH
+# so rpy2 package can find the correct
+# R lib files.
+R_HOME=$(R RHOME)
+
 CONF_DIR="$HOME/.jupyter"
 CONF_FILE="${CONF_DIR}/jupyter_notebook_config.py"
 mkdir -p "${CONF_DIR}"
 
 cat >> $CONF_FILE << EOF
+import os
 c = get_config()
 c.NotebookApp.root_dir = '/'
 c.NotebookApp.preferred_dir = '${HOME}'
 c.NotebookApp.tornado_settings = {'headers': {'Content-Security-Policy': 'frame-ancestors *'}}
 c.NotebookApp.default_url = '/lab/tree${!LOCKER_WORKING_DIR_VAR}'
 c.NotebookApp.token = u''
+libpath = os.environ["LD_LIBRARY_PATH"] if "LD_LIBRARY_PATH" in os.environ else ""
+os.environ['LD_LIBRARY_PATH'] = '${R_HOME}/lib:' + libpath
+c.Spawner.env.update('LD_LIBRARY_PATH')
+c.Spawner.env_keep.append('LD_LIBRARY_PATH')
 EOF
 
 COMMAND='jupyter-lab --config="$CONF_FILE" --no-browser --ip="0.0.0.0" 2>&1'
