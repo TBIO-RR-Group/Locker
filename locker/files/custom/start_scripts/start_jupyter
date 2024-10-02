@@ -2,12 +2,17 @@
 
 set -o nounset -o errexit -o pipefail
 
+# Set R_HOME and LD_LIBRARY_PATH
+# so rpy2 package can find the correct
+# R lib files.
+R_HOME=$(R RHOME)
+
 CONF_DIR="$HOME/.jupyter"
 CONF_FILE="${CONF_DIR}/jupyter_notebook_config.py"
-
 mkdir -p "${CONF_DIR}"
 
 cat <<EOF >>"${CONF_FILE}"
+import os
 c.NotebookApp.notebook_dir = '/'
 #c.NotebookApp.base_url = ''
 c.NotebookApp.tornado_settings = {'headers': {'Content-Security-Policy': 'frame-ancestors *'}}
@@ -20,6 +25,10 @@ c.NotebookApp.open_browser = False    # no browser needed on a server
 c.NotebookApp.ip = '0.0.0.0'          # listen on the network
 c.NotebookApp.password = ''            # don't require a password
 c.NotebookApp.token = ''              # don't require a security token
+libpath = os.environ["LD_LIBRARY_PATH"] if "LD_LIBRARY_PATH" in os.environ else ""
+os.environ['LD_LIBRARY_PATH'] = '${R_HOME}/lib:' + libpath
+c.Spawner.env.update('LD_LIBRARY_PATH')
+c.Spawner.env_keep.append('LD_LIBRARY_PATH')
 EOF
 
 FINAL_COMMAND='jupyter notebook --config="$CONF_FILE" 2>&1'
