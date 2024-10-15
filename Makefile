@@ -10,6 +10,7 @@ ENV_OPTION=--env-file=.env
 else
 PORT=5000
 SERVER_ADMIN=andrewsmith_97@yahoo.com
+SSL_PASSPHRASE=my_passphrase
 NAME=locker_rr
 VERSION=locker_devtest
 REGISTRY=dockerreg.example.com:443
@@ -23,6 +24,7 @@ REGISTRY_TAG=${ECR_REGISTRY}/${NAME}:${VERSION}
 BUILD_ARGS=\
 	--build-arg PORT=${PORT} \
 	--build-arg SERVER_ADMIN=${SERVER_ADMIN} \
+	--build-arg SSL_PASSPHRASE=${SSL_PASSPHRASE} \
 	-t ${LOCAL_TAG} \
 	-t ${REGISTRY_TAG} \
 	-t ${NAME}:${VERSION} \

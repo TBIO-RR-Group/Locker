@@ -3,6 +3,7 @@ FROM python:3.9.2-slim
 # Build args (set values in .env)
 ARG PORT
 ARG SERVER_ADMIN
+ARG SSL_PASSPHRASE
 
 USER root
 
@@ -67,6 +68,13 @@ RUN mv /etc/apache2/sites-available/000-default.conf /tmp/000-default.confORIG
 ADD locker_services/000-default.conf.template /etc/apache2/sites-available/000-default.conf.template
 RUN envsubst < /etc/apache2/sites-available/000-default.conf.template > /etc/apache2/sites-available/000-default.conf
 RUN rm -fr /etc/apache2/sites-enabled/000-default.conf && ln -s /etc/apache2/sites-available/000-default.conf /etc/apache2/sites-enabled/
+
+# Add SSL passphrase configuration
+ADD locker_services/passphrase.conf /etc/apache2/conf-available/passphrase.conf
+RUN ln -s /etc/apache2/conf-available/passphrase.conf /etc/apache2/conf-enabled/
+ADD locker_services/passphrase.sh.template /usr/local/bin/passphrase.sh.template
+RUN envsubst < /usr/local/bin/passphrase.sh.template > /usr/local/bin/passphrase.sh
+RUN chmod +x /usr/local/bin/passphrase.sh
 
 # Add modules to python path
 ADD modules /modules
