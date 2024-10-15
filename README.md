@@ -104,6 +104,7 @@ Before you can run Locker or Locker services you need to create the Docker image
     # SSL Certs
     CERT_FILE=<FULL PATH TO CERT FILE HERE>
     KEY_FILE=<FULL PATH TO KEY FILE HERE>
+    SSL_PASSPHRASE=<PASSPHRASE FOR KEY FILES>
     ```
 
 4. Run `make build` to build the docker image.
