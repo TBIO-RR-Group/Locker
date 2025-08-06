@@ -266,7 +266,9 @@ locker:
 
   ## Your GitHub server (e.g. enterprise GitHub server);
   ## containers will be setup to allow SSH clones and actions against it
-  githubUrl: "enterprisegithub.example.com"
+  ## format as list for multiple URLs
+  githubUrl: 
+    - "github.com"
 
   ## The generic username that users will be inside the container 
   ## (e.g. they will SSH in under this username and this will be

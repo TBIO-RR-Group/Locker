@@ -133,7 +133,7 @@ def sshConnect(username,hostname,password=None,sshprivkey=None,port=22):
     if sshprivkey is not None:
 
         # Try each key type
-        for cls in [paramiko.RSAKey, paramiko.DSSKey, paramiko.ECDSAKey, paramiko.Ed25519Key]:
+        for cls in [paramiko.RSAKey, paramiko.ECDSAKey, paramiko.Ed25519Key]:
             pkey_file = io.StringIO(initial_value=sshprivkey) # needs be inside loop
             try:
                 pkey = cls.from_private_key(pkey_file)
@@ -810,6 +810,15 @@ def startEc2(aws_region='us-east-1',root_disk_size=100,ec2_instance_type='t2.mic
         ec2 = session.resource('ec2')
         instance = ec2.Instance(instanceid)
         instance.wait_until_running()
+
+        ## (Optional) Associate IAM profile
+        if config.IAM_INSTANCE_ROLE:
+            client.associate_iam_instance_profile(
+                IamInstanceProfile={
+                    'Name': config.IAM_INSTANCE_ROLE
+                },
+                InstanceId=instanceid
+            )
 
         new_ec2_username = config.AMI_USER
         new_ec2_ip = response['Instances'][0]['PrivateIpAddress']
