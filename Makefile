@@ -56,7 +56,7 @@ buildfresh:
 	docker build --no-cache ${BUILD_ARGS}
 
 # Run locker services
-run-locker-services:
+run-locker-services: locker-startscript
 ifeq ($(REQUIRED_FILES),)
 	@echo "AWS_ADMIN_KEY, CERT_FILE, and KEY_FILE are required for secure file transfer"
 	@exit 1

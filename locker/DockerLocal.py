@@ -15,6 +15,7 @@ import DockerRegistry
 import docker
 import ecr
 import requests_unixsocket
+import textwrap
 from Config import Config
 
 # Load locker configuration
@@ -474,7 +475,20 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
         cmd=f'chown {config.containerUser}:{config.containerUser} {config.containerUserHomedir}/.ssh/id_privkey_{user}'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
-        sshConfig = f'host {config.githubUrl}\nHostName {config.githubUrl}\nIdentityFile {config.containerUserHomedir}/.ssh/id_privkey_{user}\nUser git\nStrictHostKeyChecking no\n'
+        ## Construct the ~/.ssh/config file for
+        ## cloning github repos.
+        sshConfigBlocks = []
+        for githubUrl in config.githubUrl:
+            block = f"""\
+            Host {githubUrl}
+                HostName {githubUrl}
+                IdentityFile {config.containerUserHomedir}/.ssh/id_privkey_{user}
+                User git
+                StrictHostKeyChecking no
+            """
+            sshConfigBlocks.append(block)
+        sshConfig = textwrap.dedent("\n\n".join(sshConfigBlocks))
+
         sshConfigTemp_f = tempfile.NamedTemporaryFile('w+t',delete=False)
         sshConfigTemp_f.write(sshConfig)
         sshConfigTemp_fname = sshConfigTemp_f.name
