@@ -154,21 +154,19 @@ def copyIntoContainer2(contObj=None,srcContent=None, src=None, dst=None):
         socket._sock.close()
         execRunWrap(contObj, f'cp {tmpFile} {dst}',raiseExceptionIfExitCodeNonZero=True)
     else:
-        #assumed dir
+        #assumed dir - use Docker's native put_archive to avoid streaming race conditions
         if not dst.endswith('/'):
             dst = dst + '/'
         srcFileName = os.path.basename(src)
-        with tempfile.NamedTemporaryFile() as tmpTar_f:
-            with tarfile.open(fileobj=tmpTar_f, mode='w|gz') as tar:
-                tar.add(src, arcname=srcFileName)
-            tmpTar_f.flush()
-            execCmd = f"sh -c 'cat - > {tmpFile}'"
-            _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-            tmpTar_f.seek(0)
-            socket._sock.sendall(tmpTar_f.read())
-            socket._sock.close()
-            execRunWrap(contObj, f'cp {tmpFile} {dst}/{srcFileName}.tgz',raiseExceptionIfExitCodeNonZero=True)
-        execRunWrap(contObj,f"sh -c 'cd {dst} && tar xfz {srcFileName}.tgz && rm -f {srcFileName}.tgz'",raiseExceptionIfExitCodeNonZero=True)
+        
+        # Create tar archive in memory using proper mode (not streaming)
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w:gz') as tar:
+            tar.add(src, arcname=srcFileName)
+        tar_data.seek(0)
+        
+        # Use Docker's native put_archive method instead of socket transfer
+        contObj.put_archive(dst, tar_data.getvalue())
 
     execRunWrap(contObj, f"sh -c '[ ! -e {tmpFile} ] || rm -fr {tmpFile}'",raiseExceptionIfExitCodeNonZero=True)
 
