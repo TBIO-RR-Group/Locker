@@ -2,6 +2,14 @@
 
 {% block title %}Containers{% endblock %}
 
+{% block head %}
+<style>
+.service-status-ready { color: green; font-weight: bold; }
+.service-status-starting { color: orange; font-weight: bold; }
+.service-status-stopped { color: red; font-weight: bold; }
+</style>
+{% endblock %}
+
 {% block main %}
 
 <center>
@@ -103,6 +111,57 @@
          }
 
       })
+
+      // Client-side polling for service status updates
+      function updateServiceStatus() {
+         // Get all running containers by checking the table
+         $("#grid-containers tbody tr").each(function() {
+            var $row = $(this);
+            var containerShortId = $row.find('td:first').text().trim();
+            var containerStatus = $row.find('td:nth-child(5)').text().trim();
+            
+            if (containerStatus === 'running') {
+               // Find the full container ID from the row data
+               // For now, we'll make a request to get status for all running containers
+               $.ajax({
+                  url: '/api/container-status-all',
+                  method: 'GET',
+                  timeout: 5000,
+                  success: function(data) {
+                     if (data.status === 'success') {
+                        // Update each container's service links
+                        data.containers.forEach(function(container) {
+                           $("#grid-containers tbody tr").each(function() {
+                              var $tableRow = $(this);
+                              var tableShortId = $tableRow.find('td:first').text().trim();
+                              
+                              if (tableShortId === container.short_id) {
+                                 // Update main app service link (9th column)
+                                 $tableRow.find('td:nth-child(9)').html(container.mainAppLink);
+                                 
+                                 // Update VSCode service link (10th column)  
+                                 $tableRow.find('td:nth-child(10)').html(container.vscodeLink);
+                              }
+                           });
+                        });
+                     }
+                  },
+                  error: function(xhr, status, error) {
+                     console.log('Error updating container status:', error);
+                  }
+               });
+               
+               // Break out of the each loop after making one request
+               return false;
+            }
+         });
+      }
+
+      // Poll every 5 seconds for service status updates
+      setInterval(updateServiceStatus, 5000);
+      
+      // Run initial update after 2 seconds
+      setTimeout(updateServiceStatus, 2000);
 
    });
 

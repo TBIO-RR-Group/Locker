@@ -120,6 +120,42 @@ def getHostPorts(contObj,containerPorts):
 
     return returnPorts
 
+def checkServiceHealth(contObj, service, port):
+    """
+    Check if a service is ready and responding inside a container.
+    Uses process detection and HTTP checks for reliability.
+    Returns True if service is ready, False otherwise.
+    """
+    try:
+        # Method 1: Check if the service process is running
+        process_running = False
+        if service == 'rstudio':
+            cmd = "sh -c 'ps -ef | grep rserver | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and 'rserver' in response
+        elif service in ['jupyter', 'jupyterlab']:
+            cmd = "sh -c 'ps -ef | grep jupyter | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and 'jupyter' in response
+        elif service == 'vscode':
+            cmd = "sh -c 'ps -ef | grep -E \"code-server|vscode\" | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and ('code-server' in response or 'vscode' in response)
+        
+        # Method 2: Check if HTTP service is responding
+        http_responding = False
+        if service in ['rstudio', 'jupyter', 'jupyterlab', 'vscode']:
+            cmd = f"sh -c 'curl -s --connect-timeout 1 --max-time 3 http://localhost:{port}/ > /dev/null 2>&1'"
+            exitCode, _ = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            http_responding = exitCode == 0
+        
+        # Service is healthy if process is running OR HTTP is responding
+        return process_running or http_responding
+        
+    except Exception as e:
+        # On any error, assume service is not ready
+        return False
+
 #This does basically the same thing as previous/old copyIntoContainer (except doesn't support pre-tarred dirs),
 #but in a different way. The reason I created this as follows. If you bind mount the host root (i.e. '/')
 #dir then old copyIntoContainer threw "out of disk space" errors for some reason (seems to be a bug in Docker;

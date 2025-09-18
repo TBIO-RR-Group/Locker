@@ -316,22 +316,54 @@ def getLockerContainers():
         if "22" in portsInfo:
             curContObj.sshLink = '<a href="' + url_for('ssh_access') + f'?user={containerUser}&host={host}&port={portsInfo["22"]}">SSH</a>'
 
+        # Generate main app link with health check
         if mainAppContainerPort in portsInfo:
-            if appsInIframe:
-                curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[mainAppContainerPort]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}">{main_app}</a>'
+            if curContObj.status == "running":
+                # Check if the service is actually ready
+                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, mainAppContainerPort)
+                
+                if is_healthy:
+                    # Service is ready - show working link
+                    if appsInIframe:
+                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[mainAppContainerPort]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                    else:
+                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[mainAppContainerPort]}" title="http://{host}:{portsInfo[mainAppContainerPort]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                else:
+                    # Service is starting - show status without link
+                    curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} Starting...</span>'
             else:
-                curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[mainAppContainerPort]}" title="http://{host}:{portsInfo[mainAppContainerPort]}">{main_app}</a>'
+                # Container is not running
+                curContObj.mainAppLink = f'<span style="color: #d9534f;" title="Container is stopped">{main_app} (Stopped)</span>'
+        else:
+            # Port not available
+            curContObj.mainAppLink = f'<span style="color: #777;" title="Port not available">{main_app} (Unavailable)</span>'
+            
+        # Generate VSCode link with health check
         if vscodeContainerPort in portsInfo:
             if main_app == 'vscode':
-                if appsInIframe:                
-                    curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode">VSCode</a>'
-                else:
-                    curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}">VSCode</a>'
+                # VSCode is the main app - already handled above
+                pass
             else:
-                if appsInIframe:                
-                    curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode">VSCode</a>'
+                # VSCode is secondary service
+                if curContObj.status == "running":
+                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeContainerPort)
+                    
+                    if is_vscode_healthy:
+                        # VSCode is ready
+                        if appsInIframe:                
+                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
+                        else:
+                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
+                    else:
+                        # VSCode is starting
+                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="VSCode is starting up...">VSCode Starting...</span>'
                 else:
-                    curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}">VSCode</a>'
+                    # Container stopped
+                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">VSCode (Stopped)</span>'
+        else:
+            # VSCode not enabled or main_app is vscode
+            if main_app != 'vscode':
+                curContObj.vscodeLink = '<span style="color: #777;" title="VSCode not enabled">VSCode (Not enabled)</span>'
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
@@ -349,6 +381,53 @@ def home():
 
     viewConts, curRunningContainerCt = getLockerContainers()
     return render_template('home.html', info={ 'containers': viewConts })
+
+@app.route('/api/container-status/<container_id>')
+def get_container_status(container_id):
+    """API endpoint to get real-time container service status"""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        for container in viewConts:
+            if container.id == container_id:
+                # Return just the service status for this container
+                return jsonify({
+                    'status': 'success',
+                    'services': {
+                        'mainApp': getattr(container, 'mainAppStatus', 'Stopped'),
+                        'vscode': getattr(container, 'vscodeStatus', 'Stopped')
+                    },
+                    'links': {
+                        'mainApp': getattr(container, 'mainAppLink', ''),
+                        'vscode': getattr(container, 'vscodeLink', '')
+                    }
+                })
+        
+        return jsonify({'status': 'error', 'message': 'Container not found'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/container-status-all')
+def get_all_container_status():
+    """API endpoint to get real-time service status for all containers"""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        
+        containers_data = []
+        for container in viewConts:
+            containers_data.append({
+                'id': container.id,
+                'short_id': container.short_id,
+                'status': container.status,
+                'mainAppLink': getattr(container, 'mainAppLink', ''),
+                'vscodeLink': getattr(container, 'vscodeLink', '')
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'containers': containers_data
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/favicon.ico')
 def favicon():
