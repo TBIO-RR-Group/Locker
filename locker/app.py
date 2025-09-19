@@ -1194,9 +1194,10 @@ def stopNonConfiguringOfflineEnableConts():
 
 # Write a function to dynamically generate supervisord scripts
 # depending on the requested services.
-def genSupervisordConf(services, supervisord_conf_file_path):
+def genSupervisordConf(services):
     """
-    Generate a supervisord conf file for the services requested.
+    Generate supervisord conf file content for the services requested.
+    Returns the content as a string.
     """
     # Import "global" config variables
     try:
@@ -1227,8 +1228,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyter'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # JupyterLab
@@ -1238,8 +1239,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyterlab'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # RStudio
@@ -1249,8 +1250,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_rstudio 8888'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # VSCode
@@ -1260,8 +1261,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_vscode 8887'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # Add services to the base config
@@ -1271,16 +1272,11 @@ def genSupervisordConf(services, supervisord_conf_file_path):
         base += jupyterlab
     if "rstudio" in services:
         base += rstudio
-    if "vscode" or "_vscode" in services:
+    if "vscode" in services or "_vscode" in services:
         base += vscode
 
-    # Write the config to a file
-    try:
-        with open(supervisord_conf_file_path, "w") as file:
-            base = textwrap.dedent(base)
-            file.write(base)
-    except Exception as e:
-        raise Exception('Error writing supervisord conf file in genSupervisordConf: ' + str(e))
+    # Return the dedented config content
+    return textwrap.dedent(base)
 
 
 def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None):
@@ -1358,10 +1354,13 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     else:
         vscode = ''
 
-    # Generate supervisord conf file
+    # Generate supervisord conf content in memory
     supervisord_conf_file_name = f'supervisord_{main_app}{vscode}.conf'
-    supervisord_conf_file_path = os.path.join(app.config['FILES_PATH'],supervisord_conf_file_name)
-    genSupervisordConf([main_app, vscode], supervisord_conf_file_path)
+    supervisord_conf_content = genSupervisordConf([main_app, vscode])  # No file path = returns content
+    
+    # Validate content was generated
+    if not supervisord_conf_content or not supervisord_conf_content.strip():
+        raise Exception(f'Generated supervisord config content is empty for services: {[main_app, vscode]}')
 
     try:
         docker_client = DockerLocal.getDockerClient()
@@ -1428,21 +1427,32 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     except Exception as e:
         raise Exception('Error starting (and reloading attrs for) the new Docker container in start_containerFunc: ' + str(e))
 
-    copyIntoContainerPaths= { supervisord_conf_file_path: f'/etc/supervisor/conf.d/{supervisord_conf_file_name}',
-                              os.path.join(app.config['FILES_PATH'],'custom'): '/var/opt/workspaces/',
+    # Prepare files to copy into container (excluding supervisord config which we'll copy directly)
+    copyIntoContainerPaths= { os.path.join(app.config['FILES_PATH'],'custom'): '/var/opt/workspaces/',
                               os.path.join(app.config['FILES_PATH'],'paths_ac.py'): '/tmp/paths_ac.py'}
 
     if os.path.isfile(envVarFile):
         copyIntoContainerPaths[envVarFile] = f'{containerUserHomedir}/.env'
     if os.path.isfile(startupScript):
         copyIntoContainerPaths[startupScript] = f'{containerUserHomedir}/.startupScript'
+    
     try:
+        # Copy regular files
         for src,dest in copyIntoContainerPaths.items():
             DockerLocal.copyIntoContainer2(contObj=contObj,src=src,dst=dest)
             cmd=f'chown -R {containerUser}:{containerUser} {dest}'
             DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
             cmd=f'chmod -R 0777 {dest}'
             DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        
+        # Copy supervisord config directly from memory
+        DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=supervisord_conf_content.encode(), 
+                                     dst=f'/etc/supervisor/conf.d/{supervisord_conf_file_name}')
+        cmd=f'chown {containerUser}:{containerUser} /etc/supervisor/conf.d/{supervisord_conf_file_name}'
+        DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        cmd=f'chmod 0644 /etc/supervisor/conf.d/{supervisord_conf_file_name}'
+        DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        
     except Exception as e:
         raise Exception('Error copying files into the new Docker container in start_containerFunc: ' + str(e))
 
