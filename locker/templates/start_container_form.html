@@ -48,7 +48,7 @@
       </div>
     </div>
   </div>
-  <div class="form-group">
+  <div class="form-group" id="vscode_checkbox_group">
     <div class="checkbox">
       <label><input type="checkbox" name="vscode"> Also Start VSCode ?</label>
     </div>
@@ -62,8 +62,9 @@
   </div>
 {% else %}
   <div class="form-group" style="display:none">
-  <div class="checkbox">
-    <label><input type="checkbox" class="mount_type_{{cur_sshfs_mount[1]}}" name="{{cur_sshfs_mount[1]}}" {{cur_sshfs_mount[8]}}> Network Mount {{cur_sshfs_mount[0]}} ?</label>
+    <div class="checkbox">
+      <label><input type="checkbox" class="mount_type_{{cur_sshfs_mount[1]}}" name="{{cur_sshfs_mount[1]}}" {{cur_sshfs_mount[8]}}> Network Mount {{cur_sshfs_mount[0]}} ?</label>
+    </div>
   </div>
 {% endif %}
 {% if cur_sshfs_mount[1] in start_info.locally_available_sshfs_mounts %}
@@ -92,7 +93,11 @@
 
 <script>
 
-function setupFileSelectAC (jqSelector, searchUrl, ftype = 'BOTH') {
+function setupFileSelectAC (jqSelector, searchUrl, ftype) {
+   
+   if (typeof ftype === 'undefined') {
+     ftype = 'BOTH';
+   }
 
    $( jqSelector ).autocomplete({
       source: function( request, response ) {
@@ -132,6 +137,25 @@ $( document ).ready(function() {
    $("a.startupscript_tooltipLink").tooltip();
    setupFileSelectAC ('#envVarFile', '/paths_ac');
    setupFileSelectAC ('#startupScript', '/paths_ac');
+
+   // Disable/enable VSCode checkbox based on main app selection
+   function toggleVSCodeCheckbox() {
+     var mainApp = $('select[name="main_app"]').val();
+     if (mainApp === 'vscode') {
+       $('#vscode_checkbox_group input[name="vscode"]').prop('disabled', true);
+       $('#vscode_checkbox_group input[name="vscode"]').prop('checked', false);
+       $('#vscode_checkbox_group label').css('color', '#999');
+     } else {
+       $('#vscode_checkbox_group input[name="vscode"]').prop('disabled', false);
+       $('#vscode_checkbox_group label').css('color', '');
+     }
+   }
+   
+   // Call on page load
+   toggleVSCodeCheckbox();
+   
+   // Call when main app selection changes
+   $('select[name="main_app"]').change(toggleVSCodeCheckbox);
 
 {% for cur_sshfs_mount in start_info.sshfs_mounts %}
 {% if cur_sshfs_mount[1] in start_info.locally_available_sshfs_mounts %}
