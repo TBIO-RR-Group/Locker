@@ -32,8 +32,12 @@
    </ul>
 </div>
 
+{% if info and info.containers %}
 <div style="overflow-x: auto; width: 100%; margin-top: 10px;">
-   <table id="grid-containers" class="table table-condensed table-hover table-striped" style="table-layout: auto; min-width: 1200px;">
+{% else %}
+<div style="width: 100%; margin-top: 10px;">
+{% endif %}
+   <table id="grid-containers" class="table table-condensed table-hover table-striped" {% if info and info.containers %}style="table-layout: auto; min-width: 1200px;"{% endif %}>
       <thead>
          <tr>
             <th data-column-id="id">ID</th>
