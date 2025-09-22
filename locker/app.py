@@ -319,29 +319,35 @@ def getLockerContainers():
         # Generate main app link with health check
         # Check if main app port was originally configured by looking at container's port configuration
         main_app_was_configured = False
+        # Determine which port to check based on the main app
+        if main_app == 'vscode':
+            check_port = vscodeContainerPort
+        else:
+            check_port = mainAppContainerPort
+            
         try:
             # Check if main app port was configured in the container (either in ExposedPorts or PortBindings)
             if (curContObj.attrs and 'HostConfig' in curContObj.attrs and 
                 'PortBindings' in curContObj.attrs['HostConfig'] and
                 curContObj.attrs['HostConfig']['PortBindings'] and
-                (f"{mainAppContainerPort}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
-                 f"{mainAppContainerPort}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
+                (f"{check_port}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
+                 f"{check_port}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
                 main_app_was_configured = True
         except Exception:
             # Fallback to old method if we can't read container config
-            main_app_was_configured = mainAppContainerPort in portsInfo
+            main_app_was_configured = check_port in portsInfo
             
         if main_app_was_configured:
             if curContObj.status == "running":
                 # Check if the service is actually ready
-                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, mainAppContainerPort)
+                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, check_port)
                 
-                if is_healthy and mainAppContainerPort in portsInfo:
+                if is_healthy and check_port in portsInfo:
                     # Service is ready - show working link
                     if appsInIframe:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[mainAppContainerPort]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[check_port]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
                     else:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[mainAppContainerPort]}" title="http://{host}:{portsInfo[mainAppContainerPort]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[check_port]}" title="http://{host}:{portsInfo[check_port]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
                 else:
                     # Service is starting - show status without link
                     curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} starting...</span>'
