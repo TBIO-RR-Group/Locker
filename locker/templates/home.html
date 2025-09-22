@@ -32,40 +32,42 @@
    </ul>
 </div>
 
-<table id="grid-containers" class="table table-condensed table-hover table-striped" style="table-layout: auto;">
-   <thead>
-      <tr>
-         <th data-column-id="id">ID</th>
-         <th data-column-id="name">Name</th>
-         <th data-column-id="start_time" data-formatter="start_time">Start Time</th>
-         <th data-column-id="image" data-formatter="image">Image</th>
-         <th data-column-id="state" data-formatter="state">State</th>
-         <th data-column-id="contActions" data-formatter="contActions">Container Actions</th>
-         <th data-column-id="commitCont" data-formatter="commitCont">Commit Container</th>
-         <th data-column-id="ssh">SSH</th>
-         <th data-column-id="main_app">Primary Application</th>
-         <th data-column-id="vscode">VSCode</th>
-      </tr>
-   </thead>
-   <tbody>
-      {% if info and info.containers %}
-      {% for container in info.containers %}
-      <tr>
-         <td>{{ container.short_id }}</td>
-         <td>{{ container.name }}</td>
-         <td>{{ container.attrs['State']['StartedAt'] }}</td>
-         <td>{{ container.image.tags[0] }}</td>
-         <td>{{ container.status }}</td>
-         <td>Container Actions</td>
-         <td>Commit</td>
-         <td>{{ container.sshLink }}</td>
-         <td>{{ container.mainAppLink }}</td>
-         <td>{{ container.vscodeLink }}</td>
-      </tr>
-      {% endfor %}
-      {% endif %}
-   </tbody>
-</table>
+<div style="overflow-x: auto; width: 100%; margin-top: 10px;">
+   <table id="grid-containers" class="table table-condensed table-hover table-striped" style="table-layout: auto; min-width: 1200px;">
+      <thead>
+         <tr>
+            <th data-column-id="id">ID</th>
+            <th data-column-id="name">Name</th>
+            <th data-column-id="start_time" data-formatter="start_time">Start Time</th>
+            <th data-column-id="image" data-formatter="image">Image</th>
+            <th data-column-id="state" data-formatter="state">State</th>
+            <th data-column-id="contActions" data-formatter="contActions">Container Actions</th>
+            <th data-column-id="commitCont" data-formatter="commitCont">Commit Container</th>
+            <th data-column-id="ssh">SSH</th>
+            <th data-column-id="main_app">Primary Application</th>
+            <th data-column-id="vscode">VSCode</th>
+         </tr>
+      </thead>
+      <tbody>
+         {% if info and info.containers %}
+         {% for container in info.containers %}
+         <tr>
+            <td>{{ container.short_id }}</td>
+            <td>{{ container.name }}</td>
+            <td>{{ container.attrs['State']['StartedAt'] }}</td>
+            <td>{{ container.image.tags[0] }}</td>
+            <td>{{ container.status }}</td>
+            <td>Container Actions</td>
+            <td>Commit</td>
+            <td>{{ container.sshLink }}</td>
+            <td>{{ container.mainAppLink }}</td>
+            <td>{{ container.vscodeLink }}</td>
+         </tr>
+         {% endfor %}
+         {% endif %}
+      </tbody>
+   </table>
+</div>
 
 <script>
 
