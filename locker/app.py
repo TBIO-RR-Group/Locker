@@ -317,12 +317,26 @@ def getLockerContainers():
             curContObj.sshLink = '<a href="' + url_for('ssh_access') + f'?user={containerUser}&host={host}&port={portsInfo["22"]}">SSH</a>'
 
         # Generate main app link with health check
-        if mainAppContainerPort in portsInfo:
+        # Check if main app port was originally configured by looking at container's port configuration
+        main_app_was_configured = False
+        try:
+            # Check if main app port was configured in the container (either in ExposedPorts or PortBindings)
+            if (curContObj.attrs and 'HostConfig' in curContObj.attrs and 
+                'PortBindings' in curContObj.attrs['HostConfig'] and
+                curContObj.attrs['HostConfig']['PortBindings'] and
+                (f"{mainAppContainerPort}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
+                 f"{mainAppContainerPort}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
+                main_app_was_configured = True
+        except Exception:
+            # Fallback to old method if we can't read container config
+            main_app_was_configured = mainAppContainerPort in portsInfo
+            
+        if main_app_was_configured:
             if curContObj.status == "running":
                 # Check if the service is actually ready
                 is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, mainAppContainerPort)
                 
-                if is_healthy:
+                if is_healthy and mainAppContainerPort in portsInfo:
                     # Service is ready - show working link
                     if appsInIframe:
                         curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[mainAppContainerPort]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
@@ -330,16 +344,30 @@ def getLockerContainers():
                         curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[mainAppContainerPort]}" title="http://{host}:{portsInfo[mainAppContainerPort]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
                 else:
                     # Service is starting - show status without link
-                    curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} Starting...</span>'
+                    curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} starting...</span>'
             else:
-                # Container is not running
-                curContObj.mainAppLink = f'<span style="color: #d9534f;" title="Container is stopped">{main_app} (Stopped)</span>'
+                # Container is not running but main app was configured
+                curContObj.mainAppLink = f'<span style="color: #d9534f;" title="Container is stopped">{main_app} (unavailable)</span>'
         else:
-            # Port not available
-            curContObj.mainAppLink = f'<span style="color: #777;" title="Port not available">{main_app} (Unavailable)</span>'
+            # Port not configured
+            curContObj.mainAppLink = f'<span style="color: #777;" title="Port not configured">{main_app} (not enabled)</span>'
             
         # Generate VSCode link with health check
-        if vscodeContainerPort in portsInfo:
+        # Check if VSCode was originally configured by looking at container's port configuration
+        vscode_was_configured = False
+        try:
+            # Check if VSCode port was configured in the container (either in ExposedPorts or PortBindings)
+            if (curContObj.attrs and 'HostConfig' in curContObj.attrs and 
+                'PortBindings' in curContObj.attrs['HostConfig'] and
+                curContObj.attrs['HostConfig']['PortBindings'] and
+                (f"{vscodeContainerPort}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
+                 f"{vscodeContainerPort}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
+                vscode_was_configured = True
+        except Exception:
+            # Fallback to old method if we can't read container config
+            vscode_was_configured = vscodeContainerPort in portsInfo
+            
+        if vscode_was_configured:
             if main_app == 'vscode':
                 # VSCode is the main app - already handled above
                 pass
@@ -348,22 +376,22 @@ def getLockerContainers():
                 if curContObj.status == "running":
                     is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeContainerPort)
                     
-                    if is_vscode_healthy:
-                        # VSCode is ready
+                    if is_vscode_healthy and vscodeContainerPort in portsInfo:
+                        # VSCode is ready and port is available
                         if appsInIframe:                
                             curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
                         else:
                             curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
                     else:
-                        # VSCode is starting
-                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="VSCode is starting up...">VSCode Starting...</span>'
+                        # VSCode is starting or port not yet available
+                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="VSCode is starting up...">VSCode starting...</span>'
                 else:
-                    # Container stopped
-                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">VSCode (Stopped)</span>'
+                    # Container stopped but VSCode was configured
+                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">VSCode (unavailable)</span>'
         else:
             # VSCode not enabled or main_app is vscode
             if main_app != 'vscode':
-                curContObj.vscodeLink = '<span style="color: #777;" title="VSCode not enabled">VSCode (Not enabled)</span>'
+                curContObj.vscodeLink = '<span style="color: #777;" title="VSCode not enabled">VSCode (not enabled)</span>'
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
