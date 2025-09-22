@@ -379,19 +379,19 @@ def getLockerContainers():
                     if is_vscode_healthy and vscodeContainerPort in portsInfo:
                         # VSCode is ready and port is available
                         if appsInIframe:                
-                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
+                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                         else:
-                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">VSCode</a>'
+                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                     else:
                         # VSCode is starting or port not yet available
-                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="VSCode is starting up...">VSCode starting...</span>'
+                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="vscode is starting up...">vscode starting...</span>'
                 else:
                     # Container stopped but VSCode was configured
-                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">VSCode (unavailable)</span>'
+                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">vscode (unavailable)</span>'
         else:
             # VSCode not enabled or main_app is vscode
             if main_app != 'vscode':
-                curContObj.vscodeLink = '<span style="color: #777;" title="VSCode not enabled">VSCode (not enabled)</span>'
+                curContObj.vscodeLink = '<span style="color: #777;" title="vscode not enabled">vscode (not enabled)</span>'
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
