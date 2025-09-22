@@ -170,24 +170,42 @@ def copyIntoContainer2(contObj=None,srcContent=None, src=None, dst=None):
     #Not sure what the issue is directly copying, but doing this for all files to be safe.
 
     tmpRes = execRunWrap(contObj, 'mktemp',raiseExceptionIfExitCodeNonZero=True)
-    tmpFile = tmpRes[1]
+    tmpFile = tmpRes[1].strip()
 
     if srcContent is not None:
-        execCmd = f"sh -c 'cat - > {tmpFile}'"
-        _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-        #Caller should have called encode() on srcContent if it was text
-        socket._sock.sendall(srcContent)
-        socket._sock.close()
+        # Create a temporary file with the content and use put_archive
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            if isinstance(srcContent, str):
+                temp_file.write(srcContent.encode())
+            else:
+                temp_file.write(srcContent)
+            temp_file_path = temp_file.name
+        
+        # Create tar archive in memory
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w') as tar:
+            tar.add(temp_file_path, arcname=os.path.basename(tmpFile))
+        tar_data.seek(0)
+        
+        # Use put_archive to copy to temporary location
+        contObj.put_archive(os.path.dirname(tmpFile), tar_data.getvalue())
+        
+        # Clean up temp file
+        os.unlink(temp_file_path)
+        
+        # Move from temp location to final destination
         execRunWrap(contObj, f'cp {tmpFile} {dst}',raiseExceptionIfExitCodeNonZero=True)
     elif os.path.isfile(src):
-        #file
-        file = open(src,"r")
-        fileContents = file.read()
-        file.close()
-        execCmd = f"sh -c 'cat - > {tmpFile}'"
-        _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-        socket._sock.sendall(fileContents.encode())
-        socket._sock.close()
+        # Create tar archive in memory for file
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w') as tar:
+            tar.add(src, arcname=os.path.basename(tmpFile))
+        tar_data.seek(0)
+        
+        # Use put_archive to copy to temporary location
+        contObj.put_archive(os.path.dirname(tmpFile), tar_data.getvalue())
+        
+        # Move from temp location to final destination
         execRunWrap(contObj, f'cp {tmpFile} {dst}',raiseExceptionIfExitCodeNonZero=True)
     else:
         #assumed dir - use Docker's native put_archive to avoid streaming race conditions
