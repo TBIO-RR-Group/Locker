@@ -127,7 +127,6 @@ locker_services:
 
 # Manage settings for Locker
 locker:
-  LOCKER_VERSION: "V1.2"
 
   ## First configure an image registry to go against. You can go against either
   ## a private Docker registry (see https://docs.docker.com/registry/) or AWS ECR
