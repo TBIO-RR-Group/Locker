@@ -12,6 +12,12 @@ import platform
 import subprocess
 from flask import Markup
 
+def locker_version() -> str:
+    """
+    Return the locker version
+    """
+    return "v1.3.0"
+
 def empty(str):
     """
     Return True if the str is None or composed of only whitespace, False otherwise

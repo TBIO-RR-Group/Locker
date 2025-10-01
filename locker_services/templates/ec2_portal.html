@@ -16,53 +16,71 @@
 </div>
 {% endif %}
 
-<table id="grid-ec2" class="table table-condensed table-hover table-striped">
-  <thead>
-    <tr>
-      <th data-column-id="id" data-visible="false">Instance Id</th>
-      <th data-column-id="hostname" data-formatter="hostname">Hostname</th>
-      <th data-column-id="ip">IP address</th>
-      <th data-column-id="type">Instance Type</th>
-      <th data-column-id="launch_time" data-formatter="launch_time">Last Start Time (UTC)</th>
-      <th data-column-id="desc">Description</th>
-      <th data-column-id="state">State</th>
-      <th data-column-id="creator" data-visible={{ config.admin_view }}>Creator</th>
-      <th data-column-id="open_connection" data-formatter="open_connection">Open Connection</th>
-      <th data-column-id="actions" data-formatter="actions">Change State</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% if config.inst %}
-    {% for curinst in config.inst %}
-    <tr>
-      <td>{{ curinst.InstanceId }}</td>
-      {% if 'Hostname' in curinst.TagsHash %}
-      <td>{{ curinst.TagsHash['Hostname'] }}</td>
-      {% else %}
-      <td></td>
+<div class="version-view">
+  <input type="checkbox" id="version-toggle" {{'checked' if config.version_view == 'true' else '' }}>
+  <label for="version-toggle">Check locker versions</label>
+</div>
+
+<div class="compact-view">
+  <input type="checkbox" id="compact-toggle" checked>
+  <label for="compact-toggle">Compact table</label>
+</div>
+
+<div id="table-wrapper" style="width: 100%; margin-top: 10px;">
+  <table id="grid-ec2" class="table table-condensed table-hover table-striped">
+    <thead>
+      <tr>
+        <th data-column-id="id" data-visible="false">Instance Id</th>
+        <th data-column-id="hostname" data-formatter="hostname">Hostname</th>
+        <th data-column-id="ip">IP address</th>
+        <th data-column-id="type">Instance Type</th>
+        <th data-column-id="launch_time" data-formatter="launch_time">Last Start Time (UTC)</th>
+        <th data-column-id="desc">Description</th>
+        <th data-column-id="state">State</th>
+        <th data-column-id="creator" data-visible={{ config.admin_view }}>Creator</th>
+        <th data-column-id="version" data-visible={{ config.version_view }} data-formatter="version">Locker Version</th>
+        <th data-column-id="image_id" data-visible="false" data-visible-in-selection="false">Locker Image ID</th>
+        <th data-column-id="update_available" data-visible="false" data-visible-in-selection="false">Update Available</th>
+        <th data-column-id="open_connection" data-formatter="open_connection">Open Connection</th>
+        <th data-column-id="actions" data-formatter="actions">Change State</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if config.inst %}
+      {% for curinst in config.inst %}
+      <tr>
+        <td>{{ curinst.InstanceId }}</td>
+        {% if 'Hostname' in curinst.TagsHash %}
+        <td>{{ curinst.TagsHash['Hostname'] }}</td>
+        {% else %}
+        <td></td>
+        {% endif %}
+        <td>{{ curinst.PrivateIpAddress }}</td>
+        {% if curinst.InstanceType in config.inst_type_name_to_desc %}
+        <td>{{ config.inst_type_name_to_desc[curinst.InstanceType] }}</td>
+        {% elif 'InstanceTypeDescription' in curinst.TagsHash %}
+        <td>{{ curinst.TagsHash['InstanceTypeDescription'] }}</td>
+        {% else %}
+        <td>{{ curinst.InstanceType }}</td>
+        {% endif %}
+        <td>{{ curinst.LaunchTime }}</td>
+        {% if 'Description' in curinst.TagsHash %}
+        <td>{{ curinst.TagsHash['Description'] }}</td>
+        {% else %}
+        <td></td>
+        {% endif %}
+        <td>{{ curinst.State.Name }}</td>
+        <td>{{ curinst.TagsHash['Creator'] }}</td>
+        <td>{{ curinst.LockerVersion }}</td>
+        <td>{{ curinst.LockerImageId }}</td>
+        <td>{{ curinst.UpdateAvailable }}</td>
+        <td>Change State</td>
+      </tr>
+      {% endfor %}
       {% endif %}
-      <td>{{ curinst.PrivateIpAddress }}</td>
-      {% if curinst.InstanceType in config.inst_type_name_to_desc %}
-      <td>{{ config.inst_type_name_to_desc[curinst.InstanceType] }}</td>
-      {% elif 'InstanceTypeDescription' in curinst.TagsHash %}
-      <td>{{ curinst.TagsHash['InstanceTypeDescription'] }}</td>
-      {% else %}
-      <td>{{ curinst.InstanceType }}</td>
-      {% endif %}
-      <td>{{ curinst.LaunchTime }}</td>
-      {% if 'Description' in curinst.TagsHash %}
-      <td>{{ curinst.TagsHash['Description'] }}</td>
-      {% else %}
-      <td></td>
-      {% endif %}
-      <td>{{ curinst.State.Name }}</td>
-      <td>{{ curinst.TagsHash['Creator'] }}</td>
-      <td>Change State</td>
-    </tr>
-    {% endfor %}
-    {% endif %}
-  </tbody>
-</table>
+    </tbody>
+  </table>
+</div>
 
 <script>
 
@@ -73,6 +91,14 @@
     $("#grid-ec2").bootgrid({
       caseSensitive: false,
       formatters: {
+        "version": function (column, row) {
+          if (row.state != 'running') return null
+
+          if (row.version == 'unknown' || row.update_available == 'true') {
+            return `${row.version} (<a href='locker.cgi?a=update_locker&instance_hostname=${row.hostname}&instance_ip=${encodeURIComponent(row.ip)}'>update</a>)`
+          }
+          return `${row.version} (${row.image_id})`
+        },
         "actions": function (column, row) {
           var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
           if (row.state == 'running') {
@@ -122,7 +148,30 @@
   // Toggle admin view when checkbox changes
   $('#admin-toggle').change(function () {
     showSpinner();
-    window.location = `locker.cgi?a=ec2_portal&admin_view=${this.checked}`;
+    const version_view = $('#version-toggle').prop('checked')
+    window.location = `locker.cgi?a=ec2_portal&admin_view=${this.checked}&version_view=${version_view}`;
+  });
+
+  // Toggle version view when checkbox changes
+  $('#version-toggle').change(function () {
+    showSpinner();
+    const admin_view = $('#admin-toggle').prop('checked')
+    window.location = `locker.cgi?a=ec2_portal&admin_view=${admin_view}&version_view=${this.checked}`;
+  });
+
+  // Toggle table view when checkbox changes
+  $('#compact-toggle').change(function () {
+    const isChecked = this.checked;
+    const tableWrapper = $('#table-wrapper');
+    const table = $('#grid-ec2');
+  
+    if (!isChecked) {
+      tableWrapper.addClass('table-wrapper-expanded');
+      table.addClass('table-expanded');
+    } else {
+      tableWrapper.removeClass('table-wrapper-expanded');
+      table.removeClass('table-expanded');
+    }
   });
 
 </script>

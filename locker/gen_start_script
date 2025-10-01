@@ -48,6 +48,14 @@ else:
         template_contents
     )
 
+# Pass locker version into the start script
+if platform == 'maclinux':
+    template_contents = re.sub(
+        r'__LOCKER_VERSION__',
+        utils.locker_version(),
+        template_contents
+    )
+
 if platform == 'maclinux':
     if utils.empty(config.usable_ports):
         print("Error: please define a value for usable_ports in configuration file.")

@@ -153,6 +153,7 @@ locker:
   ## (note that if you already have built it and it is available in your local machine's Docker
   ## then you won't need to pull from this and this is sort of optional in that case).
   locker_image: "dockerreg.example.com:443/locker_rr:locker_devtest"
+  locker_image_tag: "locker_devtest"
 
   ## List usable ports, otherwise use '("ALL")' for all ports above 5000
   ## usable_ports='("10000" "10001" "10002" "10003" "10004" "10005" "10006" "10007" "10008" "10009")'

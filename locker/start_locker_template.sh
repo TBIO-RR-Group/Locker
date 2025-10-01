@@ -7,6 +7,10 @@ usable_ports=__USABLE_PORTS__
 #then you won't need to pull from this and this is sort of optional in that case).
 LOCKER_IMAGE=__LOCKER_IMAGE__
 
+#The Locker version. Written to the locker_info.json file to facilitate
+#version updates through locker services.
+LOCKER_VERSION=__LOCKER_VERSION__
+
 #If you are running Locker remotely and need to be on VPN or corporate network for that,
 #Set a value for this server. This server will be pinged, and if ping returns something
 #(doesn't time out) it will be assumed you are on a VPN or organization/corporate network.
@@ -444,6 +448,20 @@ done
 
 #Here is how to pipe a string into a file in a running Docker container:
 #PIPERES=$(echo "{\"config_sshPrivKeyFile\": \"${PRIVKEY_LOC}\", \"config_sshPubKeyFile\": \"${PUBKEY_LOC}\", \"config_offlineUsageStorage\": \"${OFFLINE_STORAGE_LOC}\"}" | docker exec -i ${DOCKER_CONT_ID} sh -c 'cat - > /locker/config.json')
+
+create_locker_info_json_file() {
+# This is actually the Image Digest, not the Image ID
+IMAGE_ID=$(docker inspect --format='{{index .RepoDigests 0}}' ${LOCKER_IMAGE} | awk -F@ '{print $2}')
+cat <<EOF > ${USER_HOMEDIR}.locker/locker_info.json
+{
+    "locker_version": "${LOCKER_VERSION}",
+    "container_id": "${DOCKER_CONT_ID}",
+    "image_id": "${IMAGE_ID}"
+}
+EOF
+}
+
+create_locker_info_json_file
 
 echo "DOCKER RUN COMMAND: $CMD"
 echo "Successfully started locker as Docker container (id ${DOCKER_CONT_ID})"

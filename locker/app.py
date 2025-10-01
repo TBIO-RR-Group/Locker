@@ -39,7 +39,7 @@ lockerStartTime = str(datetime.datetime.now(tzLoc).strftime("%Y-%m-%d %H:%M"))
 if not utils.empty(tzEnv):
     lockerStartTime = lockerStartTime + ' (' + tzEnv + ')'
 
-LOCKER_VERSION = "v1.3.0" # Versioning should not be set in the code, not config.
+LOCKER_VERSION = utils.locker_version() # Versioning should not be set in the code, not config.
 configRegistryName = config.registryName
 configRegistryUrl = config.registryUrl
 ecr_domain = config.ecr_domain

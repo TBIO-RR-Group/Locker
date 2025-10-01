@@ -33,6 +33,7 @@ import ldap
 import sqlite3
 from sqlite3 import Error
 import http.cookies as Cookie
+import base64
 from Config import Config
 
 config = Config("/config.yml")
@@ -1087,3 +1088,167 @@ def remove_nonprintable_characters(s):
 
     # Remove windows-style line endings (CRLF)
     return cleaned_str.replace('\r\n', '\n')
+
+
+def ssh_connect(admin_key: str, hostname: str):
+    """
+    Create an SSH session connection
+    """
+    pkey = paramiko.RSAKey.from_path(admin_key)
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(
+        hostname=hostname,
+        username='ec2-user',
+        pkey=pkey
+    )
+    return(ssh)
+
+def exec_command(ssh: paramiko.SSHClient, cmd: str):
+    """
+    Execute command and return results in JSON format
+    """
+    try:
+        stdin, stdout, stderr = ssh.exec_command(
+            command=cmd
+        )
+        stdoutText = stdout.read().decode().strip().split('\n')
+
+        # Convert to json
+        if stdoutText == ['']:
+            return(None)
+        result = json.loads(''.join(stdoutText))
+        return(result)
+    except Exception as e:
+        return(e)
+
+def getEcrClient(accessKey,secretKey,awsRegion, setProxy=False):
+
+    config = None
+    if setProxy:
+        config = Config(proxies=proxies)
+
+    client = boto3.client(
+        'ecr',
+        aws_access_key_id=accessKey,
+        aws_secret_access_key=secretKey,
+        region_name=awsRegion,
+        config=config
+        )
+
+    return client
+
+def get_locker_info_from_ec2(ip_address: str) -> str:
+    """
+    Get the locker version from the EC2 instance by
+    executing a remote command via SSH to read the
+    locker_info.json file on the locker host server.
+    If this file doesn't exist or can't be read,
+    set the default version to "unknown".
+    """
+    # Default locker info
+    empty_result = {
+        "locker_version": "unknown",
+        "image_id": "unknown",
+        "container_id": "unknown",
+        "update_available": 'true'
+    }
+    try:
+
+        # Get locker info from EC2 instance
+        ssh = ssh_connect(
+            admin_key=config.KEYLOC,
+            hostname=ip_address
+        )
+        cmd = 'cat /home01/ec2-user/.locker/locker_info.json'
+        result = exec_command(ssh, cmd)
+        ssh.close()
+
+        if not result:
+            return empty_result
+
+        # Check for updated version
+        ## Set update available to False by default
+        result['update_available'] = 'false'
+        
+        ## Log into ECR 
+        ecr_client = getEcrClient(
+            accessKey=os.getenv("AWS_ACCESS_KEY_ID"),
+            secretKey=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            awsRegion=os.getenv("AWS_DEFAULT_REGION"),
+            setProxy=False
+        )
+        
+        ## Get latest image id
+        locker_image = ecr_client.describe_images(
+            repositoryName=f"{config.ecr_repo_name}", 
+            imageIds=[{'imageTag': config.locker_image_tag}]
+        )
+        latest_image_id = locker_image['imageDetails'][0]['imageDigest']
+    
+        # If latest hash doesn't match image_id, then set update_available to True
+        if latest_image_id != result['image_id']:
+            result['update_available'] = 'true'
+    
+        return result
+    except Exception as e:
+        printTEXT(f"Error getting locker version from EC2 instance {ip_address}: {str(e)}")
+    
+
+def update_locker_on_ec2(locker_username, server_username, current_container_id, hostname, sshprivkey, sshport=22):
+    """
+    Pulls the latest locker image and starts Locker.
+    """
+
+    # Define remote locker direcotory on user's EC2 from config
+    remote_locker_dir = f'{config.AMI_USER_HOMEDIR}/{config.userConfigDirName}'
+
+    # Stop all docker containers with the Locker prefix 
+    # (to handle older versions where the container id 
+    # has not been recorded to the locker_info.json file)
+    remoteRes = execRemoteCmd(
+        'bash',
+        server_username,
+        hostname,
+        sshprivkey=sshprivkey,
+        stdinTxt=r"""
+        LOCKER_CONTAINERS=$(docker ps --filter name="locker*" --filter status=running -aq)
+        if [ ! -z "$LOCKER_CONTAINERS" ]; then
+            docker container stop $LOCKER_CONTAINERS
+        fi
+        """,
+        port=sshport
+    )
+
+    if not remoteRes['success']:
+        return(remoteRes)
+    if 'exit_code' in remoteRes and int(remoteRes['exit_code']) != 0:
+        remoteRes['success'] = False
+        return(remoteRes)
+       
+    # Replace the existing start locker script with the latest one
+    # (old start scripts will not properly create the locker_info.json file)
+    startLockerScriptLocation = config.START_SCRIPT_LOCATION
+
+    ssh = sshConnect(server_username, hostname, sshprivkey=sshprivkey, port=sshport)
+    scp = SCPClient(ssh.get_transport())
+    scp.put(startLockerScriptLocation, remote_locker_dir, recursive=False)
+    scp.close()
+
+    # Start locker, pulling the latest image
+    remoteRes = execRemoteCmd(
+        'bash',
+        server_username,
+        hostname,
+        sshprivkey=sshprivkey,
+        stdinTxt=f'{remote_locker_dir}/start_locker.sh -u {locker_username} -d {config.AMI_USER_HOMEDIR} -s "r" -p',
+        port=sshport
+    )
+
+    if not remoteRes['success']:
+        return(remoteRes)
+    if 'exit_code' in remoteRes and int(remoteRes['exit_code']) != 0:
+        remoteRes['success'] = False
+        return(remoteRes)
+
+    return({"success": True})
