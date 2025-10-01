@@ -44,6 +44,7 @@ stage = 'form'
 password = None
 server_username = None
 locker_username = None
+instance_hostname = None
 hostname = None
 install_location = None
 locker_homedir = None
@@ -54,6 +55,7 @@ pull_latest_locker_image = False
 ec2_instance_type = None
 ec2_desc = None
 admin_view = locker_config.ADMIN_VIEW_DEFAULT
+version_view = "false"
 
 #http_smuser = os.environ.get(locker_config.SERVER_USER_ENV_VAR_NAME)
 
@@ -123,6 +125,8 @@ if 'instance_id' in arguments:
    instance_id = arguments['instance_id'].value
 if 'instance_ip' in arguments:
    instance_ip = arguments['instance_ip'].value
+if 'instance_hostname' in arguments:
+   instance_hostname = arguments['instance_hostname'].value
 install_docker_flag = False
 if 'install_docker_cb' in arguments and arguments['install_docker_cb'].value == 'True':
    install_docker_flag = True
@@ -131,6 +135,8 @@ if 'mount_network_homedir_cb' in arguments and arguments['mount_network_homedir_
    mount_network_homedir_flag = True
 if 'admin_view' in arguments:
    admin_view = arguments['admin_view'].value
+if 'version_view' in arguments:
+   version_view = arguments['version_view'].value
 
 file_loader = FileSystemLoader('/locker_services/templates')
 env = Environment(loader=file_loader)
@@ -466,6 +472,16 @@ def ec2_portal_func(exec_exit=True):
          inst = utils.getLockerInstances(creator=smuser)
       ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
       AWSTagsToHash(inst)
+      if version_view == 'true':
+         for currInst in inst:
+            currInst['LockerVersion'] = 'unknown'
+            currInst['LockerImageId'] = 'unknown'
+            currInst['UpdateAvailable'] = 'false'
+            if currInst['State']['Name'] == 'running' and 'PrivateIpAddress' in currInst:
+               locker_info = utils.get_locker_info_from_ec2(currInst['PrivateIpAddress'])
+               currInst['LockerVersion'] = locker_info.get('locker_version','unknown')
+               currInst['LockerImageId'] = locker_info.get('image_id','unknown')
+               currInst['UpdateAvailable'] = locker_info.get('update_available','false')
       #See here for how to avoid errors printing datetime in json: https://stackoverflow.com/questions/11875770/how-to-overcome-datetime-datetime-not-json-serializable
       #utils.printTEXT(json.dumps(inst,indent=2,default=str))
       #sys.exit()
@@ -477,7 +493,8 @@ def ec2_portal_func(exec_exit=True):
          'ami_user': locker_config.AMI_USER, 
          'ip_to_hostname': locker_config.IP_TO_HOSTNAME_JS, 
          'admins': locker_config.ADMIN_USERNAME, # to show admin box
-         'admin_view': admin_view # to set checked/unchecked state
+         'admin_view': admin_view, # to set checked/unchecked state
+         'version_view': version_view
       }
       template = env.get_template('ec2_portal.html')
    except Exception as e:
@@ -578,6 +595,38 @@ def start_ec2_instance_func():
 
    return(config, template)
 
+def update_locker_func():
+   """
+   Connects to an EC2 instance, pulls the latest Locker image,
+   and restarts the Locker container.
+   """
+   config = {}
+   template = None
+   smuser = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+
+   if stage == 'exec':
+      if utils.empty(instance_ip) or utils.empty(instance_hostname):
+         cgi_exit("<b>Error</b>: You must provide an IP address and hostname.",config_btn='update_locker_btn')
+      sshprivkey_docker_env_admin_key = utils.slurpFile(locker_config.KEYLOC)
+      locker_info = utils.get_locker_info_from_ec2(instance_ip)
+      if locker_info.get('update_available','false') != 'true':
+         cgi_exit(f"No update available for Locker on instance {instance_id} having ip address {instance_ip}.",config_btn='update_locker_btn')
+      update_res = utils.update_locker_on_ec2(
+         locker_username = smuser,
+         server_username = locker_config.AMI_USER,
+         current_container_id = locker_info.get('container_id',''),
+         hostname = instance_ip,
+         sshprivkey = sshprivkey_docker_env_admin_key
+      )
+      if not update_res['success']:
+         json_formatted_res_str = json.dumps(update_res, indent=2)
+         cgi_exit("<b>Error</b>: failed updating Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='update_locker_btn')
+      startedLockerMsg = f"<b>Success</b>: Locker was updated on the remote server, access it <a href='http://{instance_hostname}:5000'>here</a>."
+      cgi_exit(startedLockerMsg,config_btn='update_locker_btn')
+
+   template = env.get_template('res_mesg.html')
+   config['msg'] = f"<p>Please click <a onclick=\"if (confirm('Are you sure you want to update Locker on the instance?')) {{showSpinner(); window.location='locker.cgi?a=update_locker&stage=exec&instance_hostname={instance_hostname}&instance_ip={instance_ip}';}}\" href=\"#\">here</a> to update Locker on {instance_hostname} server with ip address {instance_ip}.</p>"
+   return(config, template)
 
 def cgi_exit(errormsg,config_btn=''):
    template = env.get_template('res_mesg.html')
@@ -609,6 +658,8 @@ elif a == 'stop_ec2_instance':
    (config,template) = stop_ec2_instance_func()
 elif a == 'start_ec2_instance':
    (config,template) = start_ec2_instance_func()
+elif a == 'update_locker':
+   (config,template) = update_locker_func()
 
 
 if template is not None:

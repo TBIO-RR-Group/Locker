@@ -39,7 +39,7 @@ lockerStartTime = str(datetime.datetime.now(tzLoc).strftime("%Y-%m-%d %H:%M"))
 if not utils.empty(tzEnv):
     lockerStartTime = lockerStartTime + ' (' + tzEnv + ')'
 
-LOCKER_VERSION = config.LOCKER_VERSION
+LOCKER_VERSION = utils.locker_version() # Versioning should not be set in the code, not config.
 configRegistryName = config.registryName
 configRegistryUrl = config.registryUrl
 ecr_domain = config.ecr_domain
@@ -316,22 +316,88 @@ def getLockerContainers():
         if "22" in portsInfo:
             curContObj.sshLink = '<a href="' + url_for('ssh_access') + f'?user={containerUser}&host={host}&port={portsInfo["22"]}">SSH</a>'
 
-        if mainAppContainerPort in portsInfo:
-            if appsInIframe:
-                curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[mainAppContainerPort]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}">{main_app}</a>'
+        # Generate main app link with health check
+        # Check if main app port was originally configured by looking at container's port configuration
+        main_app_was_configured = False
+        # Determine which port to check based on the main app
+        if main_app == 'vscode':
+            check_port = vscodeContainerPort
+        else:
+            check_port = mainAppContainerPort
+            
+        try:
+            # Check if main app port was configured in the container (either in ExposedPorts or PortBindings)
+            if (curContObj.attrs and 'HostConfig' in curContObj.attrs and 
+                'PortBindings' in curContObj.attrs['HostConfig'] and
+                curContObj.attrs['HostConfig']['PortBindings'] and
+                (f"{check_port}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
+                 f"{check_port}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
+                main_app_was_configured = True
+        except Exception:
+            # Fallback to old method if we can't read container config
+            main_app_was_configured = check_port in portsInfo
+            
+        if main_app_was_configured:
+            if curContObj.status == "running":
+                # Check if the service is actually ready
+                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, check_port)
+                
+                if is_healthy and check_port in portsInfo:
+                    # Service is ready - show working link
+                    if appsInIframe:
+                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[check_port]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                    else:
+                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[check_port]}" title="http://{host}:{portsInfo[check_port]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                else:
+                    # Service is starting - show status without link
+                    curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} starting...</span>'
             else:
-                curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[mainAppContainerPort]}" title="http://{host}:{portsInfo[mainAppContainerPort]}">{main_app}</a>'
-        if vscodeContainerPort in portsInfo:
+                # Container is not running but main app was configured
+                curContObj.mainAppLink = f'<span style="color: #d9534f;" title="Container is stopped">{main_app} (unavailable)</span>'
+        else:
+            # Port not configured
+            curContObj.mainAppLink = f'<span style="color: #777;" title="Port not configured">{main_app} (not enabled)</span>'
+            
+        # Generate VSCode link with health check
+        # Check if VSCode was originally configured by looking at container's port configuration
+        vscode_was_configured = False
+        try:
+            # Check if VSCode port was configured in the container (either in ExposedPorts or PortBindings)
+            if (curContObj.attrs and 'HostConfig' in curContObj.attrs and 
+                'PortBindings' in curContObj.attrs['HostConfig'] and
+                curContObj.attrs['HostConfig']['PortBindings'] and
+                (f"{vscodeContainerPort}/tcp" in curContObj.attrs['HostConfig']['PortBindings'] or
+                 f"{vscodeContainerPort}/udp" in curContObj.attrs['HostConfig']['PortBindings'])):
+                vscode_was_configured = True
+        except Exception:
+            # Fallback to old method if we can't read container config
+            vscode_was_configured = vscodeContainerPort in portsInfo
+            
+        if vscode_was_configured:
             if main_app == 'vscode':
-                if appsInIframe:                
-                    curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode">VSCode</a>'
-                else:
-                    curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}">VSCode</a>'
+                # VSCode is the main app - already handled above
+                pass
             else:
-                if appsInIframe:                
-                    curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode">VSCode</a>'
+                # VSCode is secondary service
+                if curContObj.status == "running":
+                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeContainerPort)
+                    
+                    if is_vscode_healthy and vscodeContainerPort in portsInfo:
+                        # VSCode is ready and port is available
+                        if appsInIframe:                
+                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                        else:
+                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                    else:
+                        # VSCode is starting or port not yet available
+                        curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="vscode is starting up...">vscode starting...</span>'
                 else:
-                    curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}">VSCode</a>'
+                    # Container stopped but VSCode was configured
+                    curContObj.vscodeLink = f'<span style="color: #d9534f;" title="Container is stopped">vscode (unavailable)</span>'
+        else:
+            # VSCode not enabled or main_app is vscode
+            if main_app != 'vscode':
+                curContObj.vscodeLink = '<span style="color: #777;" title="vscode not enabled">vscode (not enabled)</span>'
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
@@ -349,6 +415,53 @@ def home():
 
     viewConts, curRunningContainerCt = getLockerContainers()
     return render_template('home.html', info={ 'containers': viewConts })
+
+@app.route('/api/container-status/<container_id>')
+def get_container_status(container_id):
+    """API endpoint to get real-time container service status"""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        for container in viewConts:
+            if container.id == container_id:
+                # Return just the service status for this container
+                return jsonify({
+                    'status': 'success',
+                    'services': {
+                        'mainApp': getattr(container, 'mainAppStatus', 'Stopped'),
+                        'vscode': getattr(container, 'vscodeStatus', 'Stopped')
+                    },
+                    'links': {
+                        'mainApp': getattr(container, 'mainAppLink', ''),
+                        'vscode': getattr(container, 'vscodeLink', '')
+                    }
+                })
+        
+        return jsonify({'status': 'error', 'message': 'Container not found'}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/container-status-all')
+def get_all_container_status():
+    """API endpoint to get real-time service status for all containers"""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        
+        containers_data = []
+        for container in viewConts:
+            containers_data.append({
+                'id': container.id,
+                'short_id': container.short_id,
+                'status': container.status,
+                'mainAppLink': getattr(container, 'mainAppLink', ''),
+                'vscodeLink': getattr(container, 'vscodeLink', '')
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'containers': containers_data
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1115,9 +1228,10 @@ def stopNonConfiguringOfflineEnableConts():
 
 # Write a function to dynamically generate supervisord scripts
 # depending on the requested services.
-def genSupervisordConf(services, supervisord_conf_file_path):
+def genSupervisordConf(services):
     """
-    Generate a supervisord conf file for the services requested.
+    Generate supervisord conf file content for the services requested.
+    Returns the content as a string.
     """
     # Import "global" config variables
     try:
@@ -1148,8 +1262,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyter'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # JupyterLab
@@ -1159,8 +1273,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_jupyterlab'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # RStudio
@@ -1170,8 +1284,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_rstudio 8888'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # VSCode
@@ -1181,8 +1295,8 @@ def genSupervisordConf(services, supervisord_conf_file_path):
     command=/bin/bash -c 'test -f $BUILD_PREFIX/setup.sh && source $BUILD_PREFIX/setup.sh; /var/opt/workspaces/custom/start_scripts/start_vscode 8887'
     stdout_logfile=/var/log/supervisor/%(program_name)s.log
     stderr_logfile=/var/log/supervisor/%(program_name)s.log
-    startsecs=0
-    autorestart=false
+    startsecs=10
+    autorestart=true
     """
 
     # Add services to the base config
@@ -1192,16 +1306,11 @@ def genSupervisordConf(services, supervisord_conf_file_path):
         base += jupyterlab
     if "rstudio" in services:
         base += rstudio
-    if "vscode" or "_vscode" in services:
+    if "vscode" in services or "_vscode" in services:
         base += vscode
 
-    # Write the config to a file
-    try:
-        with open(supervisord_conf_file_path, "w") as file:
-            base = textwrap.dedent(base)
-            file.write(base)
-    except Exception as e:
-        raise Exception('Error writing supervisord conf file in genSupervisordConf: ' + str(e))
+    # Return the dedented config content
+    return textwrap.dedent(base)
 
 
 def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None):
@@ -1279,10 +1388,13 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     else:
         vscode = ''
 
-    # Generate supervisord conf file
+    # Generate supervisord conf content in memory
     supervisord_conf_file_name = f'supervisord_{main_app}{vscode}.conf'
-    supervisord_conf_file_path = os.path.join(app.config['FILES_PATH'],supervisord_conf_file_name)
-    genSupervisordConf([main_app, vscode], supervisord_conf_file_path)
+    supervisord_conf_content = genSupervisordConf([main_app, vscode])  # No file path = returns content
+    
+    # Validate content was generated
+    if not supervisord_conf_content or not supervisord_conf_content.strip():
+        raise Exception(f'Generated supervisord config content is empty for services: {[main_app, vscode]}')
 
     try:
         docker_client = DockerLocal.getDockerClient()
@@ -1349,21 +1461,32 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     except Exception as e:
         raise Exception('Error starting (and reloading attrs for) the new Docker container in start_containerFunc: ' + str(e))
 
-    copyIntoContainerPaths= { supervisord_conf_file_path: f'/etc/supervisor/conf.d/{supervisord_conf_file_name}',
-                              os.path.join(app.config['FILES_PATH'],'custom'): '/var/opt/workspaces/',
+    # Prepare files to copy into container (excluding supervisord config which we'll copy directly)
+    copyIntoContainerPaths= { os.path.join(app.config['FILES_PATH'],'custom'): '/var/opt/workspaces/',
                               os.path.join(app.config['FILES_PATH'],'paths_ac.py'): '/tmp/paths_ac.py'}
 
     if os.path.isfile(envVarFile):
         copyIntoContainerPaths[envVarFile] = f'{containerUserHomedir}/.env'
     if os.path.isfile(startupScript):
         copyIntoContainerPaths[startupScript] = f'{containerUserHomedir}/.startupScript'
+    
     try:
+        # Copy regular files
         for src,dest in copyIntoContainerPaths.items():
             DockerLocal.copyIntoContainer2(contObj=contObj,src=src,dst=dest)
             cmd=f'chown -R {containerUser}:{containerUser} {dest}'
             DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
             cmd=f'chmod -R 0777 {dest}'
             DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        
+        # Copy supervisord config directly from memory
+        DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=supervisord_conf_content.encode(), 
+                                     dst=f'/etc/supervisor/conf.d/{supervisord_conf_file_name}')
+        cmd=f'chown {containerUser}:{containerUser} /etc/supervisor/conf.d/{supervisord_conf_file_name}'
+        DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        cmd=f'chmod 0644 /etc/supervisor/conf.d/{supervisord_conf_file_name}'
+        DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
+        
     except Exception as e:
         raise Exception('Error copying files into the new Docker container in start_containerFunc: ' + str(e))
 

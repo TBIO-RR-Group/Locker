@@ -120,6 +120,42 @@ def getHostPorts(contObj,containerPorts):
 
     return returnPorts
 
+def checkServiceHealth(contObj, service, port):
+    """
+    Check if a service is ready and responding inside a container.
+    Uses process detection and HTTP checks for reliability.
+    Returns True if service is ready, False otherwise.
+    """
+    try:
+        # Method 1: Check if the service process is running
+        process_running = False
+        if service == 'rstudio':
+            cmd = "sh -c 'ps -ef | grep rserver | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and 'rserver' in response
+        elif service in ['jupyter', 'jupyterlab']:
+            cmd = "sh -c 'ps -ef | grep jupyter | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and 'jupyter' in response
+        elif service == 'vscode':
+            cmd = "sh -c 'ps -ef | grep -E \"code-server|vscode\" | grep -v grep'"
+            exitCode, response = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            process_running = exitCode == 0 and ('code-server' in response or 'vscode' in response)
+        
+        # Method 2: Check if HTTP service is responding
+        http_responding = False
+        if service in ['rstudio', 'jupyter', 'jupyterlab', 'vscode']:
+            cmd = f"sh -c 'curl -s --connect-timeout 1 --max-time 3 http://localhost:{port}/ > /dev/null 2>&1'"
+            exitCode, _ = execRunWrap(contObj, cmd, raiseExceptionIfExitCodeNonZero=False)
+            http_responding = exitCode == 0
+        
+        # Service is healthy if process is running OR HTTP is responding
+        return process_running or http_responding
+        
+    except Exception as e:
+        # On any error, assume service is not ready
+        return False
+
 #This does basically the same thing as previous/old copyIntoContainer (except doesn't support pre-tarred dirs),
 #but in a different way. The reason I created this as follows. If you bind mount the host root (i.e. '/')
 #dir then old copyIntoContainer threw "out of disk space" errors for some reason (seems to be a bug in Docker;
@@ -134,41 +170,57 @@ def copyIntoContainer2(contObj=None,srcContent=None, src=None, dst=None):
     #Not sure what the issue is directly copying, but doing this for all files to be safe.
 
     tmpRes = execRunWrap(contObj, 'mktemp',raiseExceptionIfExitCodeNonZero=True)
-    tmpFile = tmpRes[1]
+    tmpFile = tmpRes[1].strip()
 
     if srcContent is not None:
-        execCmd = f"sh -c 'cat - > {tmpFile}'"
-        _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-        #Caller should have called encode() on srcContent if it was text
-        socket._sock.sendall(srcContent)
-        socket._sock.close()
+        # Create a temporary file with the content and use put_archive
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            if isinstance(srcContent, str):
+                temp_file.write(srcContent.encode())
+            else:
+                temp_file.write(srcContent)
+            temp_file_path = temp_file.name
+        
+        # Create tar archive in memory
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w') as tar:
+            tar.add(temp_file_path, arcname=os.path.basename(tmpFile))
+        tar_data.seek(0)
+        
+        # Use put_archive to copy to temporary location
+        contObj.put_archive(os.path.dirname(tmpFile), tar_data.getvalue())
+        
+        # Clean up temp file
+        os.unlink(temp_file_path)
+        
+        # Move from temp location to final destination
         execRunWrap(contObj, f'cp {tmpFile} {dst}',raiseExceptionIfExitCodeNonZero=True)
     elif os.path.isfile(src):
-        #file
-        file = open(src,"r")
-        fileContents = file.read()
-        file.close()
-        execCmd = f"sh -c 'cat - > {tmpFile}'"
-        _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-        socket._sock.sendall(fileContents.encode())
-        socket._sock.close()
+        # Create tar archive in memory for file
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w') as tar:
+            tar.add(src, arcname=os.path.basename(tmpFile))
+        tar_data.seek(0)
+        
+        # Use put_archive to copy to temporary location
+        contObj.put_archive(os.path.dirname(tmpFile), tar_data.getvalue())
+        
+        # Move from temp location to final destination
         execRunWrap(contObj, f'cp {tmpFile} {dst}',raiseExceptionIfExitCodeNonZero=True)
     else:
-        #assumed dir
+        #assumed dir - use Docker's native put_archive to avoid streaming race conditions
         if not dst.endswith('/'):
             dst = dst + '/'
         srcFileName = os.path.basename(src)
-        with tempfile.NamedTemporaryFile() as tmpTar_f:
-            with tarfile.open(fileobj=tmpTar_f, mode='w|gz') as tar:
-                tar.add(src, arcname=srcFileName)
-            tmpTar_f.flush()
-            execCmd = f"sh -c 'cat - > {tmpFile}'"
-            _, socket = contObj.exec_run(cmd=execCmd,stdin=True, socket=True)
-            tmpTar_f.seek(0)
-            socket._sock.sendall(tmpTar_f.read())
-            socket._sock.close()
-            execRunWrap(contObj, f'cp {tmpFile} {dst}/{srcFileName}.tgz',raiseExceptionIfExitCodeNonZero=True)
-        execRunWrap(contObj,f"sh -c 'cd {dst} && tar xfz {srcFileName}.tgz && rm -f {srcFileName}.tgz'",raiseExceptionIfExitCodeNonZero=True)
+        
+        # Create tar archive in memory using proper mode (not streaming)
+        tar_data = io.BytesIO()
+        with tarfile.open(fileobj=tar_data, mode='w:gz') as tar:
+            tar.add(src, arcname=srcFileName)
+        tar_data.seek(0)
+        
+        # Use Docker's native put_archive method instead of socket transfer
+        contObj.put_archive(dst, tar_data.getvalue())
 
     execRunWrap(contObj, f"sh -c '[ ! -e {tmpFile} ] || rm -fr {tmpFile}'",raiseExceptionIfExitCodeNonZero=True)
 

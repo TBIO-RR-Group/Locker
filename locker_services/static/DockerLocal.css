@@ -32,3 +32,40 @@ body { padding: 10px }
   margin: 5px 0px;
   padding-left: 5px;
 }
+
+.compact-view {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 15px;
+}
+
+.compact-view input[type="checkbox"],
+.compact-view label {
+  margin: 5px 0px;
+  padding-left: 5px;
+}
+
+.version-view {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 15px;
+}
+
+.version-view input[type="checkbox"],
+.version-view label {
+  margin: 5px 0px;
+  padding-left: 5px;
+}
+
+/* For the table wrapper */
+.table-wrapper-expanded {
+  overflow-x: auto;
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* For the table itself */
+.table-expanded {
+  table-layout: auto;
+  min-width: 1200px;
+}

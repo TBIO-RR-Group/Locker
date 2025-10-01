@@ -2,6 +2,14 @@
 
 {% block title %}Containers{% endblock %}
 
+{% block head %}
+<style>
+.service-status-ready { color: green; font-weight: bold; }
+.service-status-starting { color: orange; font-weight: bold; }
+.service-status-stopped { color: red; font-weight: bold; }
+</style>
+{% endblock %}
+
 {% block main %}
 
 <center>
@@ -24,40 +32,46 @@
    </ul>
 </div>
 
-<table id="grid-containers" class="table table-condensed table-hover table-striped" style="table-layout: auto;">
-   <thead>
-      <tr>
-         <th data-column-id="id">ID</th>
-         <th data-column-id="name">Name</th>
-         <th data-column-id="start_time" data-formatter="start_time">Start Time</th>
-         <th data-column-id="image" data-formatter="image">Image</th>
-         <th data-column-id="state" data-formatter="state">State</th>
-         <th data-column-id="contActions" data-formatter="contActions">Container Actions</th>
-         <th data-column-id="commitCont" data-formatter="commitCont">Commit Container</th>
-         <th data-column-id="ssh">SSH</th>
-         <th data-column-id="main_app">Primary Application</th>
-         <th data-column-id="vscode">VSCode</th>
-      </tr>
-   </thead>
-   <tbody>
-      {% if info and info.containers %}
-      {% for container in info.containers %}
-      <tr>
-         <td>{{ container.short_id }}</td>
-         <td>{{ container.name }}</td>
-         <td>{{ container.attrs['State']['StartedAt'] }}</td>
-         <td>{{ container.image.tags[0] }}</td>
-         <td>{{ container.status }}</td>
-         <td>Container Actions</td>
-         <td>Commit</td>
-         <td>{{ container.sshLink }}</td>
-         <td>{{ container.mainAppLink }}</td>
-         <td>{{ container.vscodeLink }}</td>
-      </tr>
-      {% endfor %}
-      {% endif %}
-   </tbody>
-</table>
+{% if info and info.containers %}
+<div style="overflow-x: auto; width: 100%; margin-top: 10px;">
+{% else %}
+<div style="width: 100%; margin-top: 10px;">
+{% endif %}
+   <table id="grid-containers" class="table table-condensed table-hover table-striped" {% if info and info.containers %}style="table-layout: auto; min-width: 1200px;"{% endif %}>
+      <thead>
+         <tr>
+            <th data-column-id="id">ID</th>
+            <th data-column-id="name">Name</th>
+            <th data-column-id="start_time" data-formatter="start_time">Start Time</th>
+            <th data-column-id="image" data-formatter="image">Image</th>
+            <th data-column-id="state" data-formatter="state">State</th>
+            <th data-column-id="contActions" data-formatter="contActions">Container Actions</th>
+            <th data-column-id="commitCont" data-formatter="commitCont">Commit Container</th>
+            <th data-column-id="ssh">SSH</th>
+            <th data-column-id="main_app">Primary Application</th>
+            <th data-column-id="vscode">VSCode</th>
+         </tr>
+      </thead>
+      <tbody>
+         {% if info and info.containers %}
+         {% for container in info.containers %}
+         <tr>
+            <td>{{ container.short_id }}</td>
+            <td>{{ container.name }}</td>
+            <td>{{ container.attrs['State']['StartedAt'] }}</td>
+            <td>{{ container.image.tags[0] }}</td>
+            <td>{{ container.status }}</td>
+            <td>Container Actions</td>
+            <td>Commit</td>
+            <td>{{ container.sshLink }}</td>
+            <td>{{ container.mainAppLink }}</td>
+            <td>{{ container.vscodeLink }}</td>
+         </tr>
+         {% endfor %}
+         {% endif %}
+      </tbody>
+   </table>
+</div>
 
 <script>
 
@@ -103,6 +117,57 @@
          }
 
       })
+
+      // Client-side polling for service status updates
+      function updateServiceStatus() {
+         // Get all running containers by checking the table
+         $("#grid-containers tbody tr").each(function() {
+            var $row = $(this);
+            var containerShortId = $row.find('td:first').text().trim();
+            var containerStatus = $row.find('td:nth-child(5)').text().trim();
+            
+            if (containerStatus === 'running') {
+               // Find the full container ID from the row data
+               // For now, we'll make a request to get status for all running containers
+               $.ajax({
+                  url: '/api/container-status-all',
+                  method: 'GET',
+                  timeout: 5000,
+                  success: function(data) {
+                     if (data.status === 'success') {
+                        // Update each container's service links
+                        data.containers.forEach(function(container) {
+                           $("#grid-containers tbody tr").each(function() {
+                              var $tableRow = $(this);
+                              var tableShortId = $tableRow.find('td:first').text().trim();
+                              
+                              if (tableShortId === container.short_id) {
+                                 // Update main app service link (9th column)
+                                 $tableRow.find('td:nth-child(9)').html(container.mainAppLink);
+                                 
+                                 // Update VSCode service link (10th column)  
+                                 $tableRow.find('td:nth-child(10)').html(container.vscodeLink);
+                              }
+                           });
+                        });
+                     }
+                  },
+                  error: function(xhr, status, error) {
+                     console.log('Error updating container status:', error);
+                  }
+               });
+               
+               // Break out of the each loop after making one request
+               return false;
+            }
+         });
+      }
+
+      // Poll every 5 seconds for service status updates
+      setInterval(updateServiceStatus, 5000);
+      
+      // Run initial update after 2 seconds
+      setTimeout(updateServiceStatus, 2000);
 
    });
 
