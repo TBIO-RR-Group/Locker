@@ -37,9 +37,9 @@ RUN mkdir -p /var/opt/workspaces
 #RUN pip install jupyter jupyterlab==3.6.4 ipython ipykernel ipywidgets && ipython kernel install
 #RUN jupyter nbextension enable --py widgetsnbextension
 
-RUN pip install jupyter jupyterlab ipython ipykernel ipywidgets notebook==6.4.12 && ipython kernel install
+RUN pip install --break-system-packages jupyter jupyterlab ipython ipykernel ipywidgets notebook==6.4.12 && ipython kernel install
 #See here about next line: https://github.com/microsoft/azuredatastudio/issues/24436
-RUN pip uninstall --yes traitlets && pip install traitlets==5.9.0
+RUN pip uninstall --break-system-packages --yes traitlets && pip install --break-system-packages traitlets==5.9.0
 RUN jupyter nbextension enable --py widgetsnbextension
 
 #Install VScode code-server: https://www.digitalocean.com/community/tutorials/how-to-set-up-the-code-server-cloud-ide-platform-on-ubuntu-20-04
