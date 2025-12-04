@@ -191,3 +191,7 @@ To run Locker Services, you must have the following dependencies installed:
 4. Click **Stop** on the container line when you're done developing for the day
 
 As another note, click **Stop** on the main server in the **Locker Services** to avoid accruing server costs, e.g., on weekends (you can later easily restart it); also, you can terminate servers when no longer needed.
+
+## Contributing
+
+Contributions are welcome! Please open an issue or submit a pull request on our [GitHub repository](https://github.com/TBIO-RR-Group/Locker). By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
