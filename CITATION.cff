@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Locker: A User-Friendly Tool to Run and Manage Interactive Docker Containers Supporting Reproducible Research"
+authors:
+  - family-names: Smith
+    given-names: Andrew
+    orcid: "https://orcid.org/0009-0009-6515-1671"
+    affiliation: "Informatics & Predictive Sciences, Translational Bioinformatics, Bristol Myers Squibb"
+  - family-names: Davis
+    given-names: Eric
+    orcid: "https://orcid.org/0000-0003-4051-3217"
+    affiliation: "Vindhya Data Science"
+  - family-names: Derti
+    given-names: Adnan
+    orcid: "https://orcid.org/0000-0002-8453-2244"
+    affiliation: "Vindhya Data Science"
+  - family-names: Chasalow
+    given-names: Scott D.
+    orcid: "https://orcid.org/0000-0003-1513-0249"
+    affiliation: "Informatics & Predictive Sciences, Translational Bioinformatics, Bristol Myers Squibb"
+repository-code: "https://github.com/TBIO-RR-Group/Locker"
+license: Apache-2.0
+keywords:
+  - Docker
+  - reproducible research
+  - containers
+  - data science
+  - RStudio
+  - Jupyter
+abstract: "Locker provides a web-based graphical user interface (GUI) for users to easily start, use, and stop containers with common data science IDEs such as RStudio and Jupyter. Locker can be used on a local computer or on a remote instance. Locker Services provides an intuitive, web-based portal that can create and manage Amazon Elastic Compute Cloud (EC2) instances pre-configured for running Locker."
