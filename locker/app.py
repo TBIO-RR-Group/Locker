@@ -22,12 +22,22 @@ import ecr
 from werkzeug.utils import secure_filename
 from pathlib import Path
 from Config import Config
-import SiteMinder
+import auth
 import textwrap
-#import logging
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load locker configuration
 config = Config("/config.yml")
+
+# Log authentication configuration
+logger.info("Locker starting with ForgeRock/Ping authentication")
+logger.info(f"SSO Cookie Name: {config.SSO_SESSION_COOKIE_NAME}")
+logger.info(f"Redirect URL: {config.redirect_url}")
+logger.info(f"Validate URL: {config.validate_url}")
 
 if not DockerLocal.checkDockerRunning():
     print("Error: Docker is not running, please start Docker before using this app.")
@@ -80,9 +90,9 @@ if not utils.empty(cli_run_as_user):
 #(accesible over the internet) --- containers started (and the services running in them
 #such as sshd, RStudio, Jupyter, VSCode, etc.) in each mode will similarly
 #be accesible only locally or remotely over the internet. Containers started when running
-#in remote mode will in addition have an Apache-based mod_perl SiteMinder proxy setup to
+#in remote mode will in addition have an Apache-based mod_perl SSO proxy setup to
 #only allow access to the user starting the container, for security (i.e. the user will
-#need to SiteMinder authenticate and any SiteMinder cookies they present must validate as
+#need to SSO authenticate and any SSO cookies they present must validate as
 #cookies belonging to them in order to access the started services in the container).
 #When the app is run locally, the app and started containers can only be accessed on
 #localhost and a regular "heartbeat" message from the browser will be tracked, with the app
@@ -147,7 +157,7 @@ mainAppContainerPort = config.mainAppContainerPort_local
 vscodeContainerPort = config.vscodeContainerPort_local
 if local_or_remote == 'r':
     #For remote use, these ports will be used to access the main app and vscode and will be
-    #Apache proxy servers (which will SiteMinder authenticate and then proxy to the backend
+    #Apache proxy servers (which will SSO authenticate and then proxy to the backend
     #actual services):
     mainAppContainerPort = config.mainAppContainerPort_remote
     vscodeContainerPort = config.vscodeContainerPort_remote
@@ -222,7 +232,7 @@ print("Configuration file at: " + config_file_path)
 validatedCookies = {}
 
 #See here: https://pythonise.com/series/learning-flask/python-before-after-request
-#Do SiteMinder authentication before all requests if running remotely. Returning
+#Do SSO authentication before all requests if running remotely. Returning
 #None means allow the request to go forward and get processed, otherwise display/
 #enact what is returned without processing the actual request.
 @app.before_request
@@ -231,7 +241,25 @@ def before_request_func():
     req_ep = ''
     if not utils.empty(request.endpoint):
         req_ep = request.endpoint
-    print('In before_request_func, endpoint: ' + req_ep)
+    
+    logger.info(f'Processing request for endpoint: {req_ep}')
+    
+    # Log cookie information for debugging
+    all_cookies = dict(request.cookies)
+    if all_cookies:
+        cookie_names = list(all_cookies.keys())
+        logger.info(f'Request cookies: {cookie_names}')
+        
+        # Check for expected SSO cookie
+        expected_cookie = config.SSO_SESSION_COOKIE_NAME
+        if expected_cookie in all_cookies:
+            cookie_value = all_cookies[expected_cookie]
+            logger.info(f'Found {expected_cookie} cookie (length: {len(cookie_value)})')
+        else:
+            logger.info(f'Expected {expected_cookie} cookie not found')
+    else:
+        logger.info('No cookies received in request')
+    
     if req_ep not in dontStopNonConfiguringOfflineEnableContsRequestEndpoints:
         stopNonConfiguringOfflineEnableConts()
 
@@ -239,8 +267,18 @@ def before_request_func():
         runAsUsers = { runAsUser: True }
         for curU in locker_admins:
             runAsUsers[curU] = True
-        return SiteMinder.smAuth(request, runAsUsers, validatedCookies)
+        
+        logger.info('Remote mode: authenticating user with ForgeRock/Ping')
+        auth_result = auth.smAuth(request, runAsUsers, validatedCookies)
+        
+        if auth_result is not None:
+            logger.info(f'Authentication failed or access denied for endpoint: {req_ep}')
+        else:
+            logger.info(f'Authentication successful for endpoint: {req_ep}')
+            
+        return auth_result
     else:
+        logger.info('Local mode: skipping authentication')
         return None
 
 def getAvailablePort(lockerUsedContPorts):
@@ -1544,7 +1582,7 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
         try:
             contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], allowedUsers=list(set([curUser] + locker_admins)), contStartupScriptTxt=contStartupScriptTxt)
         except Exception as e:
-            raise Exception('Error setting up Apache SiteMinder proxy in start_container: ' + str(e))
+            raise Exception('Error setting up Apache SSO proxy in start_container: ' + str(e))
 
     if not utils.empty(repo_uri):
         contStartupScriptTxt = cloneRepoUriInContainer(repo_uri,repo_release,contStartupScriptTxt)

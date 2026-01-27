@@ -1,4 +1,4 @@
-<VirtualHost *:${PORT}>
+<VirtualHost *:80>
 	# The ServerName directive sets the request scheme, hostname and port that
 	# the server uses to identify itself. This is used when creating
 	# redirection URLs. In the context of virtual hosts, the ServerName
@@ -13,9 +13,6 @@
 
 	#   SSL Engine Switch:
 	#   Enable/Disable SSL for this virtual host.
-	SSLEngine on
-	SSLCertificateFile	/etc/ssl/certs/domain.crt
-	SSLCertificateKeyFile /etc/ssl/certs/domain.key
 
 	# Make environment variables available to cgi scripts
 	PassEnv AWS_DEFAULT_REGION

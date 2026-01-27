@@ -636,7 +636,7 @@ def getLockerInstances(creator=None):
 
     return(allLockerInstances)
 
-#Will start, stop, or terminate a running EC2, but only if it's 'Creator' tag is equal to the SiteMinder user accessing
+#Will start, stop, or terminate a running EC2, but only if it's 'Creator' tag is equal to the SSO user accessing
 #the web page
 def SMUserEc2Action(instanceId=None, aws_region='us-east-1', action=None):
 
@@ -1064,10 +1064,30 @@ def getSSOUser():
     if validatedCookieVals is not None:
         return(validatedCookieVals)
 
-    validateResp = requests.get(config.validate_url,cookies={ config.SSO_SESSION_COOKIE_NAME: ssoSession })
-    respLines = validateResp.text.splitlines()
+    # ForgeRock requires browser-like headers for successful validation
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+    }
 
-    if respLines[0] != 'Success':
+    try:
+        validateResp = requests.get(
+            config.validate_url,
+            cookies={config.SSO_SESSION_COOKIE_NAME: ssoSession},
+            headers=headers,
+            allow_redirects=True,
+            timeout=10
+        )
+        respLines = validateResp.text.splitlines()
+    except Exception as e:
+        print(f"ForgeRock validation request failed: {str(e)}")
+        return(None)
+
+    if len(respLines) == 0 or respLines[0] != 'Success':
         return(None)
 
     respValsHash = {}

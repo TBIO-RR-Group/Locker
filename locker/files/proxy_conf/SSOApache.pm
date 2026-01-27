@@ -1,11 +1,12 @@
-#file:SiteMinderApache.pm
+#file:SSOApache.pm
 #--------------------------
-  package SiteMinderApache;
+  package SSOApache;
   
   use strict;
   use warnings;
   use Data::Dumper;
   use LWP::UserAgent;
+  use HTTP::Request;
   use Cache::FastMmap;
 
   use APR::Table ();  
@@ -34,9 +35,31 @@
   my $REDIRECT_TARGET_ARGNAME = $ssoParams->{'REDIRECT_TARGET_ARGNAME'};
 
   our $validatedCookies = Cache::FastMmap->new('share_file' => SHARE_FILE);
+
+  # Get browser-like headers required for ForgeRock validation
+  sub get_browser_headers {
+      return (
+          'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+          'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+          'Accept-Encoding' => 'gzip, deflate, br, zstd',
+          'Accept-Language' => 'en-US,en;q=0.9,ko;q=0.8',
+          'Cache-Control' => 'no-cache',
+          'Pragma' => 'no-cache',
+          'Sec-Ch-Ua' => '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+          'Sec-Ch-Ua-Mobile' => '?0',
+          'Sec-Ch-Ua-Platform' => '"Windows"',
+          'Sec-Fetch-Dest' => 'document',
+          'Sec-Fetch-Mode' => 'navigate',
+          'Sec-Fetch-Site' => 'none',
+          'Sec-Fetch-User' => '?1',
+          'Upgrade-Insecure-Requests' => '1'
+      );
+  }
   
   sub handler {
       my $r = shift;
+
+#logit("Processing ForgeRock authentication\n");
 
       my $cookies = $r->headers_in()->{Cookie};
       my $cookies_hashref = parseCookies($cookies);
@@ -66,7 +89,20 @@
       my $pass = 0;
 
       my $ua = LWP::UserAgent->new();
-      my $res = $ua->get($ssoParams->{'VALIDATE_URL'}, "Cookie" => "${SSO_SESSION_COOKIE_NAME}=" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME} );
+      my $req = HTTP::Request->new('GET', $ssoParams->{'VALIDATE_URL'});
+      
+      # Set cookie
+      $req->header('Cookie', "${SSO_SESSION_COOKIE_NAME}=" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME});
+      
+      # Add browser-like headers required for ForgeRock validation
+#logit("Adding ForgeRock browser headers\n");
+      my %browser_headers = get_browser_headers();
+      for my $header_name (keys %browser_headers) {
+          $req->header($header_name, $browser_headers{$header_name});
+      }
+      
+      my $res = $ua->request($req);
+      
       if ($res->is_success()) {
 	  my $resContent = $res->content;
 	  if (empty($resContent)) { $resContent = "" }
@@ -83,7 +119,7 @@
 	  if ($requiredUsers->{$validateVals->{'User'}}) {
 	      $pass = 1;
 	      $validatedCookies->set($cookies_hashref->{$SSO_SESSION_COOKIE_NAME},[$validateVals->{"TTL"},time(),$validateVals->{"User"}]);
-#	      logit("Added new SM Cookie:\n" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME} . "\n" . $validateVals->{"TTL"}. "\n" . $validateVals->{"User"} . "\n");
+#	      logit("Added new ForgeRock Cookie:\n" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME} . "\n" . $validateVals->{"TTL"}. "\n" . $validateVals->{"User"} . "\n");
 	  }
       }
 
