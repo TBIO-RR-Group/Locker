@@ -30,8 +30,7 @@ BUILD_ARGS=\
 	-f Dockerfile .
 
 # Container run-time arguments
-# AWS_ADMIN_KEY
-# are required for secure file transfer
+# AWS_ADMIN_KEY is required for secure file transfer
 REQUIRED_FILES := $(and $(AWS_ADMIN_KEY))
 ifneq ($(REQUIRED_FILES),)
 AWS_ADMIN_KEY_FILE="/$(shell basename ${AWS_ADMIN_KEY})"
@@ -41,7 +40,9 @@ RUN_ARGS=\
 	--env-file .env \
 	-e AWS_ADMIN_KEY_UID=$(shell ls -n ${AWS_ADMIN_KEY} | awk '{print $$3}') \
 	-e AWS_ADMIN_KEY_FILE=${AWS_ADMIN_KEY_FILE} \
-	-v ${AWS_ADMIN_KEY}:${AWS_ADMIN_KEY_FILE}
+	-v ${AWS_ADMIN_KEY}:${AWS_ADMIN_KEY_FILE} \
+	-v ${CERT_FILE}:/domain.crt \
+	-v ${KEY_FILE}:/domain.key
 endif
 
 # Build image
@@ -55,7 +56,7 @@ buildfresh:
 # Run locker services
 run-locker-services: locker-startscript
 ifeq ($(REQUIRED_FILES),)
-	@echo "AWS_ADMIN_KEY is required for secure file transfer"
+	@echo "AWS_ADMIN_KEY is required"
 	@exit 1
 endif
 	docker run \
@@ -68,7 +69,7 @@ endif
 # Develop interactively
 dev: build
 ifeq ($(REQUIRED_FILES),)
-	@echo "AWS_ADMIN_KEY is required for secure file transfer"
+	@echo "AWS_ADMIN_KEY is required"
 	@exit 1
 endif
 	docker run \

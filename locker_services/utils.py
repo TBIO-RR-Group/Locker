@@ -1215,6 +1215,64 @@ def get_locker_info_from_ec2(ip_address: str) -> str:
         printTEXT(f"Error getting locker version from EC2 instance {ip_address}: {str(e)}")
     
 
+def copy_ssl_certificates_to_ec2(server_username, hostname):
+    """
+    Copy domain.crt and domain.key files to the EC2 instance.
+    These are typically bind-mounted SSL certificate files.
+    """
+    try:
+        # Get the SSH private key for connecting to EC2
+        sshprivkey_admin_key = slurpFile(config.KEYLOC)
+        
+        # Establish SSH connection
+        ssh = sshConnect(server_username, hostname, sshprivkey=sshprivkey_admin_key)
+        scp = SCPClient(ssh.get_transport())
+        
+        # Define local paths for SSL certificates (adjust these paths as needed)
+        # These should point to your bind-mounted certificate files
+        local_domain_crt = '/domain.crt'  # Adjust path as needed
+        local_domain_key = '/domain.key'  # Adjust path as needed
+        
+        # Define remote paths on EC2 instance
+        remote_certs_dir = '/etc/ssl/certs/'
+        remote_private_dir = '/etc/ssl/private/'
+        
+        # Create SSL directories on remote EC2 instance
+        remote_mkdir_cmd = f'sudo mkdir -p {remote_certs_dir} {remote_private_dir}'
+        mkdir_result = execRemoteCmd(remote_mkdir_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+        if not mkdir_result['success']:
+            return {'success': False, 'error_msg': f'Failed to create SSL directories: {mkdir_result["error_msg"]}'}
+        
+        # Copy domain.crt
+        if os.path.isfile(local_domain_crt):
+            scp.put(local_domain_crt, '/tmp/domain.crt', recursive=False)
+            mv_crt_cmd = f'sudo mv /tmp/domain.crt {remote_certs_dir}domain.crt && sudo chmod 644 {remote_certs_dir}domain.crt'
+            mv_crt_result = execRemoteCmd(mv_crt_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+            if not mv_crt_result['success']:
+                scp.close()
+                return {'success': False, 'error_msg': f'Failed to move domain.crt: {mv_crt_result["error_msg"]}'}
+        else:
+            scp.close()
+            return {'success': False, 'error_msg': f'Local domain.crt file not found at {local_domain_crt}'}
+        
+        # Copy domain.key
+        if os.path.isfile(local_domain_key):
+            scp.put(local_domain_key, '/tmp/domain.key', recursive=False)
+            mv_key_cmd = f'sudo mv /tmp/domain.key {remote_private_dir}domain.key && sudo chmod 600 {remote_private_dir}domain.key'
+            mv_key_result = execRemoteCmd(mv_key_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+            if not mv_key_result['success']:
+                scp.close()
+                return {'success': False, 'error_msg': f'Failed to move domain.key: {mv_key_result["error_msg"]}'}
+        else:
+            scp.close()
+            return {'success': False, 'error_msg': f'Local domain.key file not found at {local_domain_key}'}
+        
+        scp.close()
+        return {'success': True, 'message': 'SSL certificates copied successfully'}
+        
+    except Exception as e:
+        return {'success': False, 'error_msg': f'Exception during SSL certificate copy: {str(e)}'}
+
 def update_locker_on_ec2(locker_username, server_username, current_container_id, hostname, sshprivkey, sshport=22):
     """
     Pulls the latest locker image and starts Locker.

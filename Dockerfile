@@ -47,7 +47,9 @@ RUN pip install python-ldap
 RUN pip install pyyaml
 
 RUN apt-get install -y gnutls-bin apache2 libapache2-request-perl
-RUN ln -s /etc/apache2/mods-available/proxy.load /etc/apache2/mods-enabled/ && \
+RUN ln -s /etc/apache2/mods-available/ssl.load /etc/apache2/mods-enabled/ && \
+    ln -s /etc/apache2/mods-available/ssl.conf /etc/apache2/mods-enabled/ && \
+    ln -s /etc/apache2/mods-available/proxy.load /etc/apache2/mods-enabled/ && \
     ln -s /etc/apache2/mods-available/proxy.conf /etc/apache2/mods-enabled/ && \
     ln -s /etc/apache2/mods-available/socache_shmcb.load /etc/apache2/mods-enabled/ && \
     ln -s /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/ && \

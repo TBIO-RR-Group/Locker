@@ -174,6 +174,12 @@ def new_ec2_locker_func():
       hostname = config['remoteHostname']
       install_docker_flag = True
       (config,template) = start_docker_func()
+      
+      # Copy SSL certificate files to EC2 instance
+      copy_ssl_certs_res = utils.copy_ssl_certificates_to_ec2(server_username, hostname)
+      if not copy_ssl_certs_res['success']:
+         cgi_exit("<b>Error</b>: Failed copying SSL certificates to EC2 instance: " + copy_ssl_certs_res['error_msg'], config_btn="new_ec2_locker_btn")
+      
       locker_homedir = ""
       sshprivkey_locker = sshprivkey
       sshpubkey_locker = sshpubkey
