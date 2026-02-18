@@ -376,3 +376,4 @@ def ping(host):
     FNULL = open(os.devnull, 'w')
 
     return subprocess.call(command, stdout=FNULL, stderr=subprocess.STDOUT) == 0
+

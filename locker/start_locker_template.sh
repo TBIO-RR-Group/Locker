@@ -425,18 +425,19 @@ while true; do
 	LOCKER_PORT=$[$LOCKER_PORT+1]	
 	continue
     fi
-    USABLE_HOST_PORTS = ""
+    USABLE_HOST_PORTS=""
     array_contains usable_ports "ALL" || USABLE_HOST_PORTS=" --env DOCKER_HOST_USABLE_PORTS=$(remaining_ports_csv $LOCKER_PORT)"
     if [ $LOCAL_OR_REMOTE == 'l' ]
     then
 	EPOCH_SECS=`date +"%s"`
-	CMD="docker run -dt ${UIDGID_ENV} --env DOCKER_HOST_LOCKER_PORT=${LOCKER_PORT} --env DOCKER_HOST_ROOT=/${OTHER_ENV}${USER_HOMEDIR_ENV}${USABLE_HOST_PORTS}${PROXY_ENV} --env LOCKER_CONTAINER_NAME=locker_${RUNASUSER}_${EPOCH_SECS} -p 127.0.0.1:${LOCKER_PORT}:5000 -v /:/host_root -v /var/run/docker.sock:/var/run/docker.sock --name locker_${RUNASUSER}_${EPOCH_SECS} ${LOCKER_IMAGE} /locker/exec_locker.sh"
+	CMD="docker run -dt ${UIDGID_ENV} --env DOCKER_HOST_LOCKER_PORT=${LOCKER_PORT} --env DOCKER_HOST_ROOT=/${OTHER_ENV}${USER_HOMEDIR_ENV}${USABLE_HOST_PORTS}${PROXY_ENV} --env LOCKER_CONTAINER_NAME=locker_${RUNASUSER}_${EPOCH_SECS} -p 127.0.0.1:${LOCKER_PORT}:5000 -p 127.0.0.1:80:80 -p 127.0.0.1:81:81 -p 127.0.0.1:443:443 -v /:/host_root -v /var/run/docker.sock:/var/run/docker.sock --name locker_${RUNASUSER}_${EPOCH_SECS} ${LOCKER_IMAGE} /locker/exec_locker.sh"
 	DOCKER_CONT_ID=$($CMD)	
 	EXITCODE=$?
 	ACCESS_LOCKER_URL="http://localhost:${LOCKER_PORT}"
     else
 	EPOCH_SECS=`date +"%s"`
-	CMD="docker run -dt --hostname=`hostname -f` ${UIDGID_ENV} --env DOCKER_HOST_LOCKER_PORT=${LOCKER_PORT} --env DOCKER_HOST_ROOT=/${OTHER_ENV}${USER_HOMEDIR_ENV}${USABLE_HOST_PORTS}${PROXY_ENV} --env LOCKER_CONTAINER_NAME=locker_${RUNASUSER}_${EPOCH_SECS} -p ${LOCKER_PORT}:5000 -v /:/host_root -v /var/run/docker.sock:/var/run/docker.sock --name locker_${RUNASUSER}_${EPOCH_SECS} ${LOCKER_IMAGE} /locker/exec_locker.sh"
+    SSL_VOLUMES="-v /etc/ssl/certs/domain.crt:/etc/ssl/certs/domain.crt -v /etc/ssl/private/domain.key:/etc/ssl/private/domain.key"
+	CMD="docker run -dt --hostname=`hostname -f` ${UIDGID_ENV} --env DOCKER_HOST_LOCKER_PORT=${LOCKER_PORT} --env DOCKER_HOST_ROOT=/${OTHER_ENV}${USER_HOMEDIR_ENV}${USABLE_HOST_PORTS}${PROXY_ENV} --env LOCKER_CONTAINER_NAME=locker_${RUNASUSER}_${EPOCH_SECS} -p ${LOCKER_PORT}:5000 -p 80:80 -p 81:81 -p 443:443 -v /:/host_root -v /var/run/docker.sock:/var/run/docker.sock ${SSL_VOLUMES} --name locker_${RUNASUSER}_${EPOCH_SECS} ${LOCKER_IMAGE} /locker/exec_locker.sh"
 	DOCKER_CONT_ID=$($CMD)
 	EXITCODE=$?
 	ACCESS_LOCKER_URL=`docker exec ${DOCKER_CONT_ID} python /locker/access_locker_info.py`

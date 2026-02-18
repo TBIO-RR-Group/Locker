@@ -47,16 +47,17 @@ RUN pip install python-ldap
 RUN pip install pyyaml
 
 RUN apt-get install -y gnutls-bin apache2 libapache2-request-perl
-RUN ln -s /etc/apache2/mods-available/ssl.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/ssl.conf /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/proxy.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/proxy.conf /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/socache_shmcb.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/proxy_http.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/cgi.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/cgid.load /etc/apache2/mods-enabled/ && \
-    ln -s /etc/apache2/mods-available/cgid.conf /etc/apache2/mods-enabled/
+RUN ln -sf /etc/apache2/mods-available/ssl.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/ssl.conf /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/proxy.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/proxy.conf /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/socache_shmcb.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/headers.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/proxy_http.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/cgi.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/cgid.load /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/cgid.conf /etc/apache2/mods-enabled/ && \
+    ln -sf /etc/apache2/mods-available/perl.load /etc/apache2/mods-enabled/
 
 # Template substitution for 000-default.conf
 RUN mv /etc/apache2/sites-available/000-default.conf /tmp/000-default.confORIG
@@ -71,5 +72,7 @@ ENV PYTHONPATH=/modules
 ADD locker /locker
 ADD locker_services /locker_services
 ADD config.yml /config.yml
+
+# Default command for locker services (can be overridden)
 CMD /locker_services/start_services.sh; apachectl -D FOREGROUND
 

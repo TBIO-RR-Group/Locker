@@ -48,6 +48,30 @@ chown -R $CORRESPONDING_USER_NAME:$CORRESPONDING_USER_NAME /locker
 CANWRITE=`sudo -u $CORRESPONDING_USER_NAME test -w /var/run/docker.sock && echo "YES"`
 
 #See here: https://www.petefreitag.com/item/877.cfm for passing environment to sudo
+
+# Create necessary directories
+mkdir -p /perl_mods
+
+# Copy Apache configuration files to the correct locations
+cp /locker/files/proxy_conf/apache2.conf /etc/apache2/apache2.conf
+cp /locker/files/proxy_conf/000-default.conf /etc/apache2/sites-available/000-default.conf
+cp /locker/files/proxy_conf/ports.conf /etc/apache2/ports.conf
+cp /locker/files/proxy_conf/startup.pl /perl_mods/startup.pl
+cp /locker/files/proxy_conf/SSOApache.pm /perl_mods/SSOApache.pm
+
+# Dynamically generate SSOApache.pm __DATA__ section from config.yml
+python3 /locker/generate_sso_config.py
+
+# Enable required Apache modules
+a2enmod ssl
+a2enmod rewrite
+a2enmod proxy
+a2enmod proxy_http
+a2enmod proxy_wstunnel
+
+# Start Apache in the background
+service apache2 start
+
 if [ -z $CANWRITE ]
 then
    sudo -E -u $CONT_DOCKER_SOCK_OWNER python /locker/app.py --local_or_remote $LOCAL_OR_REMOTE --run_as_user $RUNASUSER

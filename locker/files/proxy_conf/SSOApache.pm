@@ -31,8 +31,8 @@
       }
   }
 
-  my $SSO_SESSION_COOKIE_NAME = $ssoParams->{'SSO_SESSION_COOKIE_NAME'};
-  my $REDIRECT_TARGET_ARGNAME = $ssoParams->{'REDIRECT_TARGET_ARGNAME'};
+  my $SSO_SESSION_COOKIE_NAME = $ssoParams->{'SSO_SESSION_COOKIE_NAME'} || 'BMSSSO';
+  my $REDIRECT_TARGET_ARGNAME = $ssoParams->{'REDIRECT_TARGET_ARGNAME'} || 'url';
 
   our $validatedCookies = Cache::FastMmap->new('share_file' => SHARE_FILE);
 
@@ -65,8 +65,11 @@
       my $cookies_hashref = parseCookies($cookies);
 
       my $hostport = join ':', $r->get_server_name, $r->get_server_port;
-      my $full_url = "http://" . $hostport . $r->unparsed_uri();
-      my $location =  $ssoParams->{'REDIRECT_URL'} . "?${REDIRECT_TARGET_ARGNAME}=" . uri_encode($full_url);
+      # Detect if this is an HTTPS request
+      my $scheme = ($r->get_server_port == 443 || $ENV{HTTPS}) ? "https" : "http";
+      my $full_url = $scheme . "://" . $hostport . $r->unparsed_uri();
+      my $redirect_url = $ssoParams->{'REDIRECT_URL'} || 'https://rdproxy.bms.com/rdproxyig/redirect.cgi';
+      my $location =  $redirect_url . "?${REDIRECT_TARGET_ARGNAME}=" . uri_encode($full_url);
 
       if (!defined($cookies_hashref->{$SSO_SESSION_COOKIE_NAME})) {
 #logit("No $SSO_SESSION_COOKIE_NAME, redirecting\n");
@@ -89,7 +92,8 @@
       my $pass = 0;
 
       my $ua = LWP::UserAgent->new();
-      my $req = HTTP::Request->new('GET', $ssoParams->{'VALIDATE_URL'});
+      my $validate_url = $ssoParams->{'VALIDATE_URL'} || 'https://rdproxy.bms.com/rdproxyig/validate.cgi';
+      my $req = HTTP::Request->new('GET', $validate_url);
       
       # Set cookie
       $req->header('Cookie', "${SSO_SESSION_COOKIE_NAME}=" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME});
@@ -207,8 +211,9 @@
   
 1;
 
-###Add __DATA__ section at bottom listing users who can access, e.g.:
-#__DATA__
-#smitha26
-#russom
-#rens
+__DATA__
+#SSO_SESSION_COOKIE_NAME	BMSSSO
+#REDIRECT_TARGET_ARGNAME	url
+#REDIRECT_URL	https://rdproxy.bms.com/rdproxyig/redirect.cgi
+#VALIDATE_URL	https://rdproxy.bms.com/rdproxyig/validate.cgi
+#davise21
