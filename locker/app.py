@@ -20,6 +20,7 @@ import DockerRegistry
 import utils
 import ecr
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from pathlib import Path
 from Config import Config
 import auth
@@ -155,10 +156,15 @@ if utils.empty(hostLockerPort):
 
 mainAppContainerPort = config.mainAppContainerPort_local
 vscodeContainerPort = config.vscodeContainerPort_local
+
+# Internal service ports - the actual ports services listen on inside containers.
+# These are always the "local" config ports regardless of local/remote mode.
+mainAppServicePort = config.mainAppContainerPort_local   # e.g. "8888"
+vscodeServicePort = config.vscodeContainerPort_local     # e.g. "8887"
+
 if local_or_remote == 'r':
-    #For remote use, these ports will be used to access the main app and vscode and will be
-    #Apache proxy servers (which will SSO authenticate and then proxy to the backend
-    #actual services):
+    #For remote use, these ports will be used to check port bindings.
+    #The actual services run on mainAppServicePort/vscodeServicePort internally.
     mainAppContainerPort = config.mainAppContainerPort_remote
     vscodeContainerPort = config.vscodeContainerPort_remote
 
@@ -179,6 +185,7 @@ cachedImageInfo = {}
 dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status' }
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 base_folder = app.root_path
 files_folder = os.path.join(app.root_path,'files')
 fonts_folder = os.path.join(app.root_path,'fonts')
@@ -350,6 +357,13 @@ def getLockerContainers():
         except Exception as e:
             continue
 
+        # Get container's Docker bridge IP for direct proxying to internal service ports
+        container_ip = ''
+        try:
+            container_ip = curContObj.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+        except Exception:
+            pass
+
         #SSH port
         if "22" in portsInfo:
             curContObj.sshLink = '<a href="' + url_for('ssh_access') + f'?user={containerUser}&host={host}&port={portsInfo["22"]}">SSH</a>'
@@ -358,10 +372,14 @@ def getLockerContainers():
         # Check if main app port was originally configured by looking at container's port configuration
         main_app_was_configured = False
         # Determine which port to check based on the main app
+        # check_port = the Docker-exposed port (80/81) for PortBindings detection
+        # health_port = the actual internal service port (8888/8887) for health checks and proxying
         if main_app == 'vscode':
             check_port = vscodeContainerPort
+            health_port = vscodeServicePort
         else:
             check_port = mainAppContainerPort
+            health_port = mainAppServicePort
             
         try:
             # Check if main app port was configured in the container (either in ExposedPorts or PortBindings)
@@ -377,15 +395,23 @@ def getLockerContainers():
             
         if main_app_was_configured:
             if curContObj.status == "running":
-                # Check if the service is actually ready
-                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, check_port)
+                # Check if the service is actually ready using the internal service port
+                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, health_port)
                 
-                if is_healthy and check_port in portsInfo:
-                    # Service is ready - show working link
-                    if appsInIframe:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[check_port]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                if is_healthy and (container_ip or check_port in portsInfo):
+                    # Build proxy path using container IP + internal service port (direct routing)
+                    # or fall back to host-mapped port if container IP unavailable
+                    if container_ip:
+                        proxy_path = f"{container_ip}/{health_port}"
                     else:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[check_port]}" title="http://{host}:{portsInfo[check_port]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                        proxy_path = portsInfo.get(check_port, '')
+                    # Service is ready - show working link
+                    # Use jproxy (path-preserving) for Jupyter/JupyterLab, proxy (path-stripping) for others
+                    proxy_prefix = 'jproxy' if main_app in ('jupyter', 'jupyterlab') else 'proxy'
+                    if appsInIframe:
+                        curContObj.mainAppLink = f'<a href="https://{host}/iniframe?container={curContObj.name}&app={main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                    else:
+                        curContObj.mainAppLink = f'<a href="https://{host}/{proxy_prefix}/{proxy_path}/" title="https://{host}/{proxy_prefix}/{proxy_path}/" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
                 else:
                     # Service is starting - show status without link
                     curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} starting...</span>'
@@ -418,14 +444,19 @@ def getLockerContainers():
             else:
                 # VSCode is secondary service
                 if curContObj.status == "running":
-                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeContainerPort)
+                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeServicePort)
                     
-                    if is_vscode_healthy and vscodeContainerPort in portsInfo:
+                    if is_vscode_healthy and (container_ip or vscodeContainerPort in portsInfo):
+                        # Build proxy path for VSCode
+                        if container_ip:
+                            vsc_proxy_path = f"{container_ip}/{vscodeServicePort}"
+                        else:
+                            vsc_proxy_path = portsInfo.get(vscodeContainerPort, '')
                         # VSCode is ready and port is available
                         if appsInIframe:                
-                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                            curContObj.vscodeLink = f'<a href="https://{host}/iniframe?container={curContObj.name}&app=vscode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                         else:
-                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                            curContObj.vscodeLink = f'<a href="https://{host}/proxy/{vsc_proxy_path}/" title="https://{host}/proxy/{vsc_proxy_path}/" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                     else:
                         # VSCode is starting or port not yet available
                         curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="vscode is starting up...">vscode starting...</span>'
@@ -533,14 +564,29 @@ def ssh_access():
 @app.route('/iniframe',methods=['GET','POST'])
 def iniframe():
 
-    port = request.values.get('port')
-    title = request.values.get('title')
-    if utils.empty(port):
-        port = '80'
-    if utils.empty(title):
-        title = ''
+    container_name = request.values.get('container', '')
+    app_type = request.values.get('app', '')
+    title = f"{container_name}:{app_type}" if container_name and app_type else container_name or app_type
 
-    return f'<html><head><title>{title}</title></head><body><iframe title="iFrame port {port}" width="100%" height="100%" src="http://{host}:{port}"></iframe></body></html>'
+    # Look up container IP and service port server-side
+    proxy_path = ''
+    if container_name:
+        try:
+            docker_client = DockerLocal.getDockerClient()
+            cont = docker_client.containers.get(container_name)
+            container_ip = cont.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+            if container_ip:
+                service_port = vscodeServicePort if app_type == 'vscode' else mainAppServicePort
+                proxy_path = f"{container_ip}/{service_port}"
+        except Exception:
+            pass
+
+    if not proxy_path:
+        return render_template('error.html', error='Container not found or not running'), 404
+
+    # Use jproxy (path-preserving) for Jupyter/JupyterLab, proxy (path-stripping) for others
+    proxy_prefix = 'jproxy' if app_type in ('jupyter', 'jupyterlab') else 'proxy'
+    return f'<html><head><title>{title}</title></head><body><iframe title="{title}" width="100%" height="100%" src="/{proxy_prefix}/{proxy_path}/"></iframe></body></html>'
 
 
 #Used in the configuration page to support the user browsing the file system
@@ -1586,6 +1632,21 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     if not utils.empty(repo_uri):
         contStartupScriptTxt = cloneRepoUriInContainer(repo_uri,repo_release,contStartupScriptTxt)
+
+    # Set Jupyter/JupyterLab base_url for proxy path awareness (must be done before supervisord starts)
+    if main_app in ('jupyter', 'jupyterlab'):
+        try:
+            container_ip = contObj.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+            if container_ip:
+                jupyter_base_url = f'/jproxy/{container_ip}/{mainAppServicePort}/'
+                jupyter_config = f"c.NotebookApp.base_url = '{jupyter_base_url}'\nc.ServerApp.base_url = '{jupyter_base_url}'\n"
+                conf_dir = f'{containerUserHomedir}/.jupyter'
+                conf_file = f'{conf_dir}/jupyter_notebook_config.py'
+                DockerLocal.execRunWrap(contObj, f'mkdir -p {conf_dir}', raiseExceptionIfExitCodeNonZero=True)
+                DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=jupyter_config.encode(), dst=conf_file)
+                DockerLocal.execRunWrap(contObj, f'chown -R {containerUser}:{containerUser} {conf_dir}', raiseExceptionIfExitCodeNonZero=True)
+        except Exception as e:
+            print(f'Warning: Could not set Jupyter base_url: {e}')
 
     #Start up selected main apps (RStudio, Jupyter, Jupyterlab, and/or VScode) with supervisord
     runSupervisord = f'/usr/bin/supervisord -c /etc/supervisor/conf.d/{supervisord_conf_file_name}'
