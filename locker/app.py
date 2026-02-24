@@ -163,6 +163,8 @@ vscodeContainerPort = config.vscodeContainerPort_local
 mainAppServicePort = config.mainAppContainerPort_local   # e.g. "8888"
 vscodeServicePort = config.vscodeContainerPort_local     # e.g. "8887"
 
+RESERVED_INTERNAL_PORTS = {"22", "80", "81", "8887", "8888"}
+
 if local_or_remote == 'r':
     #For remote use, these ports will be used to check port bindings.
     #The actual services run on mainAppServicePort/vscodeServicePort internally.
@@ -183,7 +185,7 @@ terminateOfflineImageConfigThreadSignals = {}
 cachedImageInfo = {}
 
 #At these request endpoints, don't try to stop offline enabling containers that have not started doing the actual offlining but weren't explicitly canceled
-dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status' }
+dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status', 'validate_port' }
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -395,6 +397,35 @@ def getUsedLockerContainerPorts():
 
     return(lockerUsedPorts)
 
+def getAllUsedHostPorts():
+    """Return a set of ALL host ports bound by any Docker container (not just standard Locker ports)."""
+    try:
+        docker_client = DockerLocal.getDockerClient()
+    except Exception:
+        return set()
+
+    try:
+        containers = docker_client.containers.list(all=True)
+    except Exception:
+        return set()
+
+    usedPorts = set()
+    for curContObj in containers:
+        try:
+            curContObj.reload()
+            networkPorts = curContObj.attrs.get('NetworkSettings', {}).get('Ports', {})
+            if networkPorts:
+                for contPort, bindings in networkPorts.items():
+                    if bindings:
+                        for binding in bindings:
+                            hostPort = binding.get('HostPort', '')
+                            if hostPort:
+                                usedPorts.add(hostPort)
+        except Exception:
+            continue
+
+    return usedPorts
+
 def getLockerContainers():
 
     try:
@@ -535,6 +566,38 @@ def getLockerContainers():
             # VSCode not enabled or main_app is vscode
             if main_app != 'vscode':
                 curContObj.vscodeLink = '<span style="color: #777;" title="vscode not enabled">vscode (not enabled)</span>'
+        # Generate custom port links
+        custom_ports_html_parts = []
+        try:
+            port_bindings = curContObj.attrs.get('HostConfig', {}).get('PortBindings', {}) or {}
+            standard_port_keys = set()
+            for std_port in ("22", mainAppContainerPort, vscodeContainerPort):
+                standard_port_keys.add(f"{std_port}/tcp")
+                standard_port_keys.add(f"{std_port}/udp")
+
+            custom_port_numbers = sorted(
+                [k.split('/')[0] for k in port_bindings if k not in standard_port_keys],
+                key=lambda p: int(p)
+            )
+
+            for port_num in custom_port_numbers:
+                if curContObj.status == "running" and container_ip:
+                    custom_ports_html_parts.append(
+                        f'<a href="https://{host}/proxy/{container_ip}/{port_num}/" '
+                        f'target="_blank" '
+                        f'style="color: #5cb85c; font-weight: bold;" '
+                        f'title="https://{host}/proxy/{container_ip}/{port_num}/">'
+                        f'{port_num}</a>'
+                    )
+                else:
+                    custom_ports_html_parts.append(
+                        f'<span style="color: #d9534f;" title="Container is stopped">{port_num}</span>'
+                    )
+        except Exception:
+            pass
+
+        curContObj.customPortsLink = ' | '.join(custom_ports_html_parts) if custom_ports_html_parts else '-'
+
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
@@ -569,7 +632,8 @@ def get_container_status(container_id):
                     },
                     'links': {
                         'mainApp': getattr(container, 'mainAppLink', ''),
-                        'vscode': getattr(container, 'vscodeLink', '')
+                        'vscode': getattr(container, 'vscodeLink', ''),
+                        'customPorts': getattr(container, 'customPortsLink', '-')
                     }
                 })
         
@@ -590,7 +654,8 @@ def get_all_container_status():
                 'short_id': container.short_id,
                 'status': container.status,
                 'mainAppLink': getattr(container, 'mainAppLink', ''),
-                'vscodeLink': getattr(container, 'vscodeLink', '')
+                'vscodeLink': getattr(container, 'vscodeLink', ''),
+                'customPortsLink': getattr(container, 'customPortsLink', '-')
             })
         
         return jsonify({
@@ -599,6 +664,41 @@ def get_all_container_status():
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/validate-port')
+def validate_port():
+    """AJAX endpoint to validate a custom port mapping pair."""
+    internal_port = request.args.get('internal_port', '').strip()
+    external_port = request.args.get('external_port', '').strip()
+
+    # Validate internal port
+    if internal_port:
+        if not internal_port.isdigit():
+            return jsonify({'valid': False, 'error': 'Internal port must be numeric'})
+        ip = int(internal_port)
+        if ip < 1 or ip > 65535:
+            return jsonify({'valid': False, 'error': 'Internal port must be between 1 and 65535'})
+        if internal_port in RESERVED_INTERNAL_PORTS:
+            return jsonify({'valid': False, 'error': f'Internal port {internal_port} is reserved by Locker'})
+
+    # Validate external port
+    if external_port:
+        if not external_port.isdigit():
+            return jsonify({'valid': False, 'error': 'External port must be numeric'})
+        ep = int(external_port)
+        if ep < 1 or ep > 65535:
+            return jsonify({'valid': False, 'error': 'External port must be between 1 and 65535'})
+        if external_port == str(hostLockerPort):
+            return jsonify({'valid': False, 'error': f'External port {external_port} is used by Locker itself'})
+        if hostUsablePorts is not None and external_port not in hostUsablePorts:
+            return jsonify({'valid': False, 'error': f'External port {external_port} is not in the allowed host port list'})
+        usedHostPorts = getAllUsedHostPorts()
+        if external_port in usedHostPorts:
+            return jsonify({'valid': False, 'error': f'External port {external_port} is already in use by a Docker container'})
+        if not utils.isPortOpen(int(external_port)):
+            return jsonify({'valid': False, 'error': f'External port {external_port} is already in use on this host'})
+
+    return jsonify({'valid': True, 'error': ''})
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1499,7 +1599,7 @@ def genSupervisordConf(services):
     return textwrap.dedent(base)
 
 
-def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None):
+def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None, custom_ports = None):
     try:
         config = utils.readConfig(config_file_path)
         config_values = utils.readUserConfigValues(config_file_path=config_file_path)
@@ -1574,6 +1674,11 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     else:
         vscode = ''
 
+    # Merge custom port mappings
+    if custom_ports:
+        for int_port in custom_ports:
+            ports[int_port] = ""
+
     # Generate supervisord conf content in memory
     supervisord_conf_file_name = f'supervisord_{main_app}{vscode}.conf'
     supervisord_conf_content = genSupervisordConf([main_app, vscode])  # No file path = returns content
@@ -1616,22 +1721,43 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
 
     if hostUsablePorts is not None:
-        lockerUsedContPorts = getUsedLockerContainerPorts()
+        usedHostPorts = getAllUsedHostPorts()
+        # Pre-register user-specified external ports so auto-assign doesn't collide
+        if custom_ports:
+            for int_port, ext_port in custom_ports.items():
+                if ext_port:
+                    usedHostPorts.add(ext_port)
         for contPort in ports:
-            availPort = getAvailablePort(lockerUsedContPorts)
-            if availPort is None:
-                raiseException("Error: No host ports remaining to start a new container.")
-            if local_or_remote == 'l':
-                ports[contPort] = ('127.0.0.1',availPort)
+            # If this is a custom port with a user-specified external port, use it directly
+            if custom_ports and contPort in custom_ports and custom_ports[contPort]:
+                userExtPort = custom_ports[contPort]
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', userExtPort)
+                else:
+                    ports[contPort] = userExtPort
             else:
-                ports[contPort] = availPort
-            lockerUsedContPorts.add(availPort)        
+                availPort = getAvailablePort(usedHostPorts)
+                if availPort is None:
+                    raise Exception("Error: No host ports remaining to start a new container.")
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', availPort)
+                else:
+                    ports[contPort] = availPort
+                usedHostPorts.add(availPort)
     else:
         for contPort in ports:
-            if local_or_remote == 'l':
-                ports[contPort] = ('127.0.0.1',None)
+            # If this is a custom port with a user-specified external port, use it directly
+            if custom_ports and contPort in custom_ports and custom_ports[contPort]:
+                userExtPort = custom_ports[contPort]
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', userExtPort)
+                else:
+                    ports[contPort] = userExtPort
             else:
-                ports[contPort] = None
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', None)
+                else:
+                    ports[contPort] = None
 
     try:
         set_hostUserUid = None
@@ -1780,6 +1906,49 @@ def start_container():
     envVarFile = request.values.get('envVarFile')
     startupScript = request.values.get('startupScript')
 
+    # Parse custom port mappings from dynamic form fields
+    custom_ports = {}
+    seen_internal = set()
+    seen_external = set()
+    idx = 0
+    while True:
+        int_key = f'custom_port_internal_{idx}'
+        ext_key = f'custom_port_external_{idx}'
+        if int_key not in request.values:
+            break
+        int_port = request.values.get(int_key, '').strip()
+        ext_port = request.values.get(ext_key, '').strip()
+        idx += 1
+        if not int_port:
+            continue
+        # Validate internal port
+        if not int_port.isdigit() or int(int_port) < 1 or int(int_port) > 65535:
+            flash(f'Custom port error: internal port "{int_port}" is not a valid port number.', "error")
+            return render_template('error.html')
+        if int_port in RESERVED_INTERNAL_PORTS:
+            flash(f'Custom port error: internal port {int_port} is reserved by Locker.', "error")
+            return render_template('error.html')
+        if int_port in seen_internal:
+            flash(f'Custom port error: duplicate internal port {int_port}.', "error")
+            return render_template('error.html')
+        seen_internal.add(int_port)
+        # Validate external port if specified
+        if ext_port:
+            if not ext_port.isdigit() or int(ext_port) < 1 or int(ext_port) > 65535:
+                flash(f'Custom port error: external port "{ext_port}" is not a valid port number.', "error")
+                return render_template('error.html')
+            if ext_port == str(hostLockerPort):
+                flash(f'Custom port error: external port {ext_port} is used by Locker itself.', "error")
+                return render_template('error.html')
+            if hostUsablePorts is not None and ext_port not in hostUsablePorts:
+                flash(f'Custom port error: external port {ext_port} is not in the allowed host port list.', "error")
+                return render_template('error.html')
+            if ext_port in seen_external:
+                flash(f'Custom port error: duplicate external port {ext_port}.', "error")
+                return render_template('error.html')
+            seen_external.add(ext_port)
+        custom_ports[int_port] = ext_port
+
     networkSshfsMounts = []
     localSshfsMounts = []
     for curSshfsMount in sshfsMounts:
@@ -1843,7 +2012,7 @@ def start_container():
             repo_uri = repo_uri + ".git"
 
     try:
-        contObj = start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, envVarFile = envVarFile, startupScript = startupScript, repo_uri = repo_uri, repo_release = repo_release, other_labels = { '__LOCKER_WORKSPACE_CONTAINER__': 'True' })
+        contObj = start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, envVarFile = envVarFile, startupScript = startupScript, repo_uri = repo_uri, repo_release = repo_release, other_labels = { '__LOCKER_WORKSPACE_CONTAINER__': 'True' }, custom_ports = custom_ports)
     except Exception as e:
         fullMsg = utils.genShowHideMessage(f'Error in start_container',": Details: " + str(e),"start_containerErr1")
         flash(fullMsg, "error")

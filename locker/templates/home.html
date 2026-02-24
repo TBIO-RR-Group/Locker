@@ -50,6 +50,7 @@
             <th data-column-id="ssh">SSH</th>
             <th data-column-id="main_app">Primary Application</th>
             <th data-column-id="vscode">VSCode</th>
+            <th data-column-id="custom_ports">Custom Ports</th>
          </tr>
       </thead>
       <tbody>
@@ -66,6 +67,7 @@
             <td>{{ container.sshLink }}</td>
             <td>{{ container.mainAppLink }}</td>
             <td>{{ container.vscodeLink }}</td>
+            <td>{{ container.customPortsLink }}</td>
          </tr>
          {% endfor %}
          {% endif %}
@@ -145,8 +147,11 @@
                                  // Update main app service link (9th column)
                                  $tableRow.find('td:nth-child(9)').html(container.mainAppLink);
                                  
-                                 // Update VSCode service link (10th column)  
+                                 // Update VSCode service link (10th column)
                                  $tableRow.find('td:nth-child(10)').html(container.vscodeLink);
+
+                                 // Update custom ports links (11th column)
+                                 $tableRow.find('td:nth-child(11)').html(container.customPortsLink);
                               }
                            });
                         });

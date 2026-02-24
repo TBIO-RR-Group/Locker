@@ -311,6 +311,18 @@ def get_my_global_host_or_ip():
 
     return host
 
+def isPortOpen(port, ip="127.0.0.1"):
+    """Return True if port can be bound to (nothing listening), False otherwise."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect((ip, int(port)))
+        s.shutdown(2)
+        return False
+    except Exception:
+        return True
+    finally:
+        s.close()
+
 def slurpFile(file):
     """
     Read an entire text file in and return it as a string.
