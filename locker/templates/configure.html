@@ -34,6 +34,21 @@
     <a data-toggle="tooltip" class="startupscript_tooltipLink" title="A file that contains a shell script that will be executed right after container startup but before RStudio and other apps are started. If this is specified it will be used for all started containers, unless another startup script file is specified on the start container page, which will take precedence over this one. An example one, with practical examples that you can modify and tailor to your own use is stored in your home directory in the .locker directory: .locker/init_locker.sh"><span class="glyphicon glyphicon-info-sign"></span></a>
     <input type="text" class="form-control" name="config_startupScript" id="config_startupScript" value="{{ config.config_startupScript }}"></input>
   </div>
+{% if config.local_or_remote == 'r' %}
+  <div class="form-group">
+    <label>Authorized Users:</label>
+    <a data-toggle="tooltip" class="authusers_tooltipLink" title="The owner and admin users are always authorized and cannot be removed. You can add additional users (comma-separated) who will be allowed to access this Locker instance. Changes take effect immediately without a restart."><span class="glyphicon glyphicon-info-sign"></span></a>
+    <div style="margin-bottom: 8px;">
+      <span class="label label-primary">{{ config.runAsUser }} (owner)</span>
+      {% for admin in config.locker_admins %}
+        {% if admin != config.runAsUser %}
+        <span class="label label-info">{{ admin }} (admin)</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <input type="text" class="form-control" name="config_authorized_users" id="config_authorized_users" placeholder="e.g. jsmith, jdoe, mwilson" value="{{ config.config_authorized_users | join(', ') }}"></input>
+  </div>
+{% endif %}
 {% if config.useEcrFlag %}
   <div class="form-group">
     <label id="config_awsCredsFile_label">AWS Credentials File:</label>
@@ -95,6 +110,7 @@ $(document).ready(function(){
    $("a.gitrepoclone_tooltipLink").tooltip();
    $("a.envvar_tooltipLink").tooltip();
    $("a.startupscript_tooltipLink").tooltip();
+   $("a.authusers_tooltipLink").tooltip();
 
    setPageButton('config_button');
 

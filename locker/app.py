@@ -64,6 +64,7 @@ configProxies = config.proxies
 locker_admins = config.locker_admins
 if locker_admins is None:
     locker_admins = []
+authorized_custom_users = []
 containerUserHomedir = config.containerUserHomedir
 containerUser = config.containerUser
 MAX_RECOMMENDED_RUNNING_CONTAINERS = config.MAX_RECOMMENDED_RUNNING_CONTAINERS
@@ -236,6 +237,71 @@ print("Running on: " + running_os)
 print("User homedir at: " + user_homedir)
 print("Configuration file at: " + config_file_path)
 
+try:
+    if os.path.exists(config_file_path):
+        _startup_config = utils.readConfig(config_file_path, rebase=False)
+        authorized_custom_users = _startup_config.get('config_authorized_users', [])
+except Exception:
+    authorized_custom_users = []
+
+def rewrite_sso_authorized_users(all_users):
+    """
+    Update the authorized users list that Apache's SSOApache.pm enforces.
+
+    1. Write /tmp/sso_authorized_users.txt atomically (temp file + os.rename).
+       SSOApache.pm polls this file's mtime every ~2 seconds and reloads it,
+       so Apache picks up the change without any restart.
+    2. Rewrite the __DATA__ section of SSOApache.pm for persistence across
+       container restarts where generate_sso_config.py may not re-run.
+    """
+    sorted_users = sorted(set(all_users))
+
+    # --- 1. Write external file (what Apache reads at runtime) ---
+    ext_users_file = '/tmp/sso_authorized_users.txt'
+    try:
+        with open(ext_users_file, 'w') as f:
+            for user in sorted_users:
+                f.write(user + '\n')
+        logger.info('Wrote %d authorized users to %s', len(sorted_users), ext_users_file)
+    except Exception as e:
+        logger.error('Error writing external authorized users file: %s', str(e))
+
+    # --- 2. Rewrite __DATA__ in SSOApache.pm (persistence for restarts) ---
+    sso_pm_path = '/perl_mods/SSOApache.pm'
+    if not os.path.exists(sso_pm_path):
+        logger.warning('SSOApache.pm not found at %s, skipping __DATA__ update', sso_pm_path)
+        return
+
+    try:
+        with open(sso_pm_path, 'r') as f:
+            content = f.read()
+
+        parts = re.split(r'^__DATA__\s*$', content, maxsplit=1, flags=re.MULTILINE)
+        if len(parts) != 2:
+            logger.error('__DATA__ section not found in SSOApache.pm')
+            return
+
+        before_data = parts[0]
+
+        data_content = []
+        data_content.append(f"SSO_SESSION_COOKIE_NAME\t{config.SSO_SESSION_COOKIE_NAME}")
+        data_content.append(f"REDIRECT_TARGET_ARGNAME\t{config.REDIRECT_TARGET_ARGNAME}")
+        data_content.append(f"REDIRECT_URL\t{config.redirect_url}")
+        data_content.append(f"VALIDATE_URL\t{config.validate_url}")
+
+        for user in sorted_users:
+            data_content.append(user)
+
+        data_section = '\n'.join(data_content)
+        new_content = before_data + '__DATA__\n' + data_section + '\n'
+
+        with open(sso_pm_path, 'w') as f:
+            f.write(new_content)
+
+        logger.info('Updated SSOApache.pm __DATA__ section with %d authorized users', len(sorted_users))
+    except Exception as e:
+        logger.error('Error rewriting SSOApache.pm: %s', str(e))
+
 validatedCookies = {}
 
 #See here: https://pythonise.com/series/learning-flask/python-before-after-request
@@ -274,7 +340,9 @@ def before_request_func():
         runAsUsers = { runAsUser: True }
         for curU in locker_admins:
             runAsUsers[curU] = True
-        
+        for curU in authorized_custom_users:
+            runAsUsers[curU] = True
+
         logger.info('Remote mode: authenticating user with ForgeRock/Ping')
         auth_result = auth.smAuth(request, runAsUsers, validatedCookies)
         
@@ -647,6 +715,8 @@ def paths_ac():
 @app.route('/dlconfigure',methods=['GET','POST'])
 def dlconfigure():
 
+    global authorized_custom_users
+
     try:
         if os.path.exists(config_file_path):
             config = utils.readConfig(config_file_path,rebase=False) #don't rebase to /host_root because want to show user as it is on host (actual root /)
@@ -658,6 +728,8 @@ def dlconfigure():
         flash(fullMsg, "error")
         return render_template('error.html');
 
+    if 'config_authorized_users' not in config:
+        config['config_authorized_users'] = authorized_custom_users
 
     #Set new values if the configure.html form was submitted:
     if not utils.empty(request.values.get('set_config')) and request.values.get('set_config') == 'set':
@@ -677,6 +749,32 @@ def dlconfigure():
         new_config_repoCloneLoc = utils.valOrEmpty(request.values.get('config_repoCloneLoc'))
         config['config_repoCloneLoc'] = new_config_repoCloneLoc
 
+        # Process authorized users
+        raw_users = request.values.get('config_authorized_users', '')
+        always_authorized = set([runAsUser] + locker_admins)
+        valid_custom_users = []
+        seen = set()
+        for raw_name in raw_users.split(','):
+            raw_name = raw_name.strip()
+            if raw_name == '':
+                continue
+            try:
+                name = utils.validate_username(raw_name)
+            except ValueError as ve:
+                flash(f"Skipped invalid username '{raw_name}': {ve}", "warning")
+                continue
+            if name in always_authorized:
+                continue
+            if name not in seen:
+                seen.add(name)
+                valid_custom_users.append(name)
+        config['config_authorized_users'] = valid_custom_users
+        authorized_custom_users = valid_custom_users
+
+        if local_or_remote == 'r':
+            all_users = list(set([runAsUser] + locker_admins + authorized_custom_users))
+            rewrite_sso_authorized_users(all_users)
+
     try:
         utils.writeConfig(config_file_path,config)
     except Exception as e:
@@ -694,6 +792,10 @@ def dlconfigure():
             curOffliningImage = curImageTag
             config['curOffliningImage'] = curImageTag
             break
+
+    config['local_or_remote'] = local_or_remote
+    config['locker_admins'] = locker_admins
+    config['runAsUser'] = runAsUser
 
     return render_template('configure.html', config=config)
 
@@ -1626,7 +1728,7 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     if local_or_remote == 'r':
         try:
-            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], allowedUsers=list(set([curUser] + locker_admins)), contStartupScriptTxt=contStartupScriptTxt)
+            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], allowedUsers=list(set([curUser] + locker_admins + authorized_custom_users)), contStartupScriptTxt=contStartupScriptTxt)
         except Exception as e:
             raise Exception('Error setting up Apache SSO proxy in start_container: ' + str(e))
 

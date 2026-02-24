@@ -17,10 +17,16 @@
   use Apache2::Const -compile => qw(FORBIDDEN OK REDIRECT);
 
   use constant SHARE_FILE => '/tmp/.cache_fastmmap_sharefile';
+  use constant AUTHORIZED_USERS_FILE => '/tmp/sso_authorized_users.txt';
+  use constant CHECK_INTERVAL_SECS => 2;
+
+  # Per-process mtime tracking (each prefork child has its own copy)
+  my $lastMtime = 0;
+  my $lastCheckTime = 0;
 
   our $requiredUsers = {};
   my $ssoParams = {};
-  while (my $curLine = <DATA>) {      
+  while (my $curLine = <DATA>) {
       $curLine = rem_ws($curLine);
       next if ($curLine =~ m/^\#/);
       my @lineParts = split /\t/, $curLine;
@@ -28,6 +34,16 @@
 	  $requiredUsers->{$lineParts[0]} = 1;
       } else {
 	  $ssoParams->{$lineParts[0]} = $lineParts[1];
+      }
+  }
+
+  # Load authorized users from external file, overriding DATA section if available
+  {
+      my $initial = load_authorized_users_from_file();
+      if ($initial && scalar(keys %$initial) > 0) {
+          $requiredUsers = $initial;
+          my @stat = stat(AUTHORIZED_USERS_FILE);
+          $lastMtime = $stat[9] if @stat;
       }
   }
 
@@ -56,8 +72,51 @@
       );
   }
   
+  sub load_authorized_users_from_file {
+      my $users = undef;
+      eval {
+          if (-f AUTHORIZED_USERS_FILE) {
+              open(my $fh, '<', AUTHORIZED_USERS_FILE) or die "Cannot open " . AUTHORIZED_USERS_FILE . ": $!";
+              $users = {};
+              while (my $line = <$fh>) {
+                  $line = rem_ws($line);
+                  next if $line =~ m/^\#/;
+                  next if $line eq '';
+                  $users->{$line} = 1;
+              }
+              close($fh);
+          }
+      };
+      if ($@) {
+          logit("Error reading authorized users file: $@\n");
+          return undef;
+      }
+      return $users;
+  }
+
+  sub maybe_reload_users {
+      my $now = time();
+      return if ($now - $lastCheckTime) < CHECK_INTERVAL_SECS;
+      $lastCheckTime = $now;
+
+      return unless -f AUTHORIZED_USERS_FILE;
+
+      my @stat = stat(AUTHORIZED_USERS_FILE);
+      return unless @stat;
+      my $mtime = $stat[9];
+      return if $mtime == $lastMtime;
+
+      my $new_users = load_authorized_users_from_file();
+      if ($new_users && scalar(keys %$new_users) > 0) {
+          $requiredUsers = $new_users;
+          $lastMtime = $mtime;
+#         logit("Reloaded " . scalar(keys %$new_users) . " authorized users from file\n");
+      }
+  }
+
   sub handler {
       my $r = shift;
+      maybe_reload_users();
 
 #logit("Processing ForgeRock authentication\n");
 

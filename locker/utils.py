@@ -39,6 +39,24 @@ def valOrEmpty(str):
     else:
         return str
 
+def validate_username(username):
+    """
+    Validate and normalize a username string.
+    Strips whitespace, lowercases, checks against allowed characters
+    (alphanumeric, underscore, dot, hyphen) and max 64 character length.
+    Returns the normalized username or raises ValueError if invalid.
+    """
+    if username is None:
+        raise ValueError("Username cannot be None")
+    username = username.strip().lower()
+    if username == "":
+        raise ValueError("Username cannot be empty")
+    if len(username) > 64:
+        raise ValueError(f"Username '{username}' exceeds 64 character limit")
+    if not re.match(r'^[a-zA-Z0-9_.\-]+$', username):
+        raise ValueError(f"Username '{username}' contains invalid characters (only alphanumeric, underscore, dot, hyphen allowed)")
+    return username
+
 def genShowHideMessage(alwaysShowTxt,initHideTxt,id):
     """
     Generate a markup string where alwaysShowTxt is always displayed, and initHideTxt is
