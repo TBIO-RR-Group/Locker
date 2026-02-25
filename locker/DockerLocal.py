@@ -360,16 +360,16 @@ def runContainer(docker_client, image, ports=None, environment=None, entrypoint=
 
     return contObj
 
-def setupApacheProxy(contObj, filesFolder, allowedUsers=[], contStartupScriptTxt=""):
+def setupApacheProxy(contObj, filesFolder, fullAccessUsers=[], restrictedUsers=[], contStartupScriptTxt=""):
     """
     For a started Docker container, setup the Apache SSO
     proxy inside it (i.e. by copying in necessary conf, startup
     files and the SSOApache.pm mod_perl module, etc.) contObj
     is the docker-py container object. filesFolder is a dir on the host
-    where the various conf, startup files are stored. allowedUsers
-    is a list of usernames that will be allowed access to the
-    primary app and vscode (assuming they can SSO
-    authenticate).
+    where the various conf, startup files are stored. fullAccessUsers
+    get unrestricted access; restrictedUsers can only access custom
+    port proxy URLs and the /authorized-ports landing page (assuming
+    they can SSO authenticate).
     """
 
     try:
@@ -403,8 +403,14 @@ def setupApacheProxy(contObj, filesFolder, allowedUsers=[], contStartupScriptTxt
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
         perlDataSectionContent = ""
-        if len(allowedUsers) > 0:
-            perlDataSectionContent = "\n".join(allowedUsers)
+        user_lines = []
+        for user in fullAccessUsers:
+            user_lines.append(f"{user}\tfull")
+        for user in restrictedUsers:
+            if user not in set(fullAccessUsers):
+                user_lines.append(f"{user}\trestricted")
+        if user_lines:
+            perlDataSectionContent = "\n".join(user_lines)
         perlDataSectionContent = perlDataSectionContent + "\n"
         perlDataSectionContent = perlDataSectionContent + "REDIRECT_URL\t" + config.redirect_url + "\n"
         perlDataSectionContent = perlDataSectionContent + "VALIDATE_URL\t" + config.validate_url + "\n"

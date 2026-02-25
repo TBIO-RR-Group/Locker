@@ -31,7 +31,9 @@
       next if ($curLine =~ m/^\#/);
       my @lineParts = split /\t/, $curLine;
       if (scalar @lineParts <= 1) {
-	  $requiredUsers->{$lineParts[0]} = 1;
+	  $requiredUsers->{$lineParts[0]} = 'full';  # bare username defaults to full
+      } elsif ($lineParts[1] eq 'full' || $lineParts[1] eq 'restricted') {
+	  $requiredUsers->{$lineParts[0]} = $lineParts[1];
       } else {
 	  $ssoParams->{$lineParts[0]} = $lineParts[1];
       }
@@ -82,7 +84,12 @@
                   $line = rem_ws($line);
                   next if $line =~ m/^\#/;
                   next if $line eq '';
-                  $users->{$line} = 1;
+                  my @parts = split /\t/, $line;
+                  if (scalar @parts >= 2 && ($parts[1] eq 'full' || $parts[1] eq 'restricted')) {
+                      $users->{$parts[0]} = $parts[1];
+                  } else {
+                      $users->{$parts[0]} = 'full';  # backward compat
+                  }
               }
               close($fh);
           }
@@ -114,6 +121,31 @@
       }
   }
 
+  sub is_path_allowed {
+      my ($role, $uri) = @_;
+      return 1 if $role eq 'full';
+
+      # Restricted users: allow static assets for landing page
+      return 1 if $uri =~ m{^/(?:favicon\.ico|static/)};
+      # Allow the restricted landing page and its API
+      return 1 if $uri =~ m{^/authorized-ports};
+      return 1 if $uri =~ m{^/api/authorized-ports};
+      # Allow locker_status (health check) and heartbeat
+      return 1 if $uri =~ m{^/locker_status};
+      return 1 if $uri =~ m{^/heartbeat};
+
+      # For /proxy/ paths, allow only non-reserved ports
+      if ($uri =~ m{^/proxy/[0-9.]+/(\d+)/}) {
+          my $port = $1;
+          return 0 if $port eq '22' || $port eq '80' || $port eq '81'
+                    || $port eq '8887' || $port eq '8888';
+          return 1;
+      }
+
+      # Deny all /jproxy/ (Jupyter) and everything else
+      return 0;
+  }
+
   sub handler {
       my $r = shift;
       maybe_reload_users();
@@ -140,8 +172,13 @@
 
       my $validatedCookieVals = $validatedCookies->get($cookies_hashref->{$SSO_SESSION_COOKIE_NAME});
       if (defined($validatedCookieVals)) {
-	  if ($requiredUsers->{$validatedCookieVals->[2]}) {
-	      return Apache2::Const::OK;
+	  my $role = $requiredUsers->{$validatedCookieVals->[2]};
+	  if ($role) {
+	      if (is_path_allowed($role, $r->unparsed_uri())) {
+	          return Apache2::Const::OK;
+	      } else {
+	          return Apache2::Const::FORBIDDEN;
+	      }
 	  } else {
 #	      logit("Forbidden1\n");
 	      return Apache2::Const::FORBIDDEN;
@@ -179,14 +216,17 @@
 	  }
 	  my $validateVals = {};
 	  map { if (m/^([^\=]+)\=(.+)$/) { $validateVals->{$1} = $2; } } @resLines;
-	  if ($requiredUsers->{$validateVals->{'User'}}) {
-	      $pass = 1;
+	  my $freshRole = $requiredUsers->{$validateVals->{'User'}};
+	  if ($freshRole) {
 	      $validatedCookies->set($cookies_hashref->{$SSO_SESSION_COOKIE_NAME},[$validateVals->{"TTL"},time(),$validateVals->{"User"}]);
 #	      logit("Added new ForgeRock Cookie:\n" . $cookies_hashref->{$SSO_SESSION_COOKIE_NAME} . "\n" . $validateVals->{"TTL"}. "\n" . $validateVals->{"User"} . "\n");
+	      if (is_path_allowed($freshRole, $r->unparsed_uri())) {
+	          $pass = 1;
+	      }
 	  }
       }
 
-#logit("pass = $pass\n");  
+#logit("pass = $pass\n");
       return $pass
           ? Apache2::Const::OK
           : Apache2::Const::FORBIDDEN;

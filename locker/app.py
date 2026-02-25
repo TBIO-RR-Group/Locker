@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, jsonify, send_from_directory, g
 from io import BytesIO
 import json
 import os
@@ -185,7 +185,7 @@ terminateOfflineImageConfigThreadSignals = {}
 cachedImageInfo = {}
 
 #At these request endpoints, don't try to stop offline enabling containers that have not started doing the actual offlining but weren't explicitly canceled
-dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status', 'validate_port' }
+dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status', 'validate_port', 'authorized_ports', 'authorized_ports_api' }
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -246,9 +246,13 @@ try:
 except Exception:
     authorized_custom_users = []
 
-def rewrite_sso_authorized_users(all_users):
+def rewrite_sso_authorized_users(full_users, restricted_users=None):
     """
     Update the authorized users list that Apache's SSOApache.pm enforces.
+
+    Users are written with tab-delimited roles: username\\tfull or username\\trestricted.
+    Full-access users (owner + admins) get unrestricted access; restricted users can
+    only access custom port proxy URLs and the /authorized-ports landing page.
 
     1. Write /tmp/sso_authorized_users.txt atomically (temp file + os.rename).
        SSOApache.pm polls this file's mtime every ~2 seconds and reloads it,
@@ -256,15 +260,31 @@ def rewrite_sso_authorized_users(all_users):
     2. Rewrite the __DATA__ section of SSOApache.pm for persistence across
        container restarts where generate_sso_config.py may not re-run.
     """
-    sorted_users = sorted(set(all_users))
+    if restricted_users is None:
+        restricted_users = []
+
+    sorted_full = sorted(set(full_users))
+    sorted_restricted = sorted(set(restricted_users) - set(full_users))
+
+    # Build role-annotated user lines
+    def _build_user_lines():
+        lines = []
+        for user in sorted_full:
+            lines.append(f"{user}\tfull")
+        for user in sorted_restricted:
+            lines.append(f"{user}\trestricted")
+        return lines
+
+    user_lines = _build_user_lines()
+    total_users = len(user_lines)
 
     # --- 1. Write external file (what Apache reads at runtime) ---
     ext_users_file = '/tmp/sso_authorized_users.txt'
     try:
         with open(ext_users_file, 'w') as f:
-            for user in sorted_users:
-                f.write(user + '\n')
-        logger.info('Wrote %d authorized users to %s', len(sorted_users), ext_users_file)
+            for line in user_lines:
+                f.write(line + '\n')
+        logger.info('Wrote %d authorized users to %s', total_users, ext_users_file)
     except Exception as e:
         logger.error('Error writing external authorized users file: %s', str(e))
 
@@ -291,8 +311,8 @@ def rewrite_sso_authorized_users(all_users):
         data_content.append(f"REDIRECT_URL\t{config.redirect_url}")
         data_content.append(f"VALIDATE_URL\t{config.validate_url}")
 
-        for user in sorted_users:
-            data_content.append(user)
+        for line in user_lines:
+            data_content.append(line)
 
         data_section = '\n'.join(data_content)
         new_content = before_data + '__DATA__\n' + data_section + '\n'
@@ -300,7 +320,7 @@ def rewrite_sso_authorized_users(all_users):
         with open(sso_pm_path, 'w') as f:
             f.write(new_content)
 
-        logger.info('Updated SSOApache.pm __DATA__ section with %d authorized users', len(sorted_users))
+        logger.info('Updated SSOApache.pm __DATA__ section with %d authorized users', total_users)
     except Exception as e:
         logger.error('Error rewriting SSOApache.pm: %s', str(e))
 
@@ -347,13 +367,23 @@ def before_request_func():
 
         logger.info('Remote mode: authenticating user with ForgeRock/Ping')
         auth_result = auth.smAuth(request, runAsUsers, validatedCookies)
-        
+
         if auth_result is not None:
             logger.info(f'Authentication failed or access denied for endpoint: {req_ep}')
-        else:
-            logger.info(f'Authentication successful for endpoint: {req_ep}')
-            
-        return auth_result
+            return auth_result
+
+        logger.info(f'Authentication successful for endpoint: {req_ep}')
+
+        # Defense-in-depth: restrict custom authorized users to allowed endpoints only
+        current_user = getattr(g, 'authenticated_user', None)
+        full_access_users = set([runAsUser] + locker_admins)
+        if current_user and current_user not in full_access_users:
+            allowed_endpoints = {'authorized_ports', 'authorized_ports_api', 'locker_status', 'static', 'heartbeat'}
+            if req_ep not in allowed_endpoints:
+                logger.info(f'Restricted user {current_user} denied access to endpoint: {req_ep}')
+                return "Access Denied", 403
+
+        return None
     else:
         logger.info('Local mode: skipping authentication')
         return None
@@ -665,6 +695,40 @@ def get_all_container_status():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/authorized-ports')
+def authorized_ports():
+    """Landing page for restricted (custom authorized) users showing only custom port links."""
+    viewConts, curRunningContainerCt = getLockerContainers()
+    # Filter to only containers that have custom port links
+    containers_with_ports = []
+    for cont in viewConts:
+        custom_link = getattr(cont, 'customPortsLink', '-')
+        if custom_link and custom_link != '-':
+            containers_with_ports.append({
+                'name': cont.name,
+                'status': cont.status,
+                'customPortsLink': custom_link
+            })
+    return render_template('authorized_ports.html', containers=containers_with_ports)
+
+@app.route('/api/authorized-ports')
+def authorized_ports_api():
+    """API endpoint returning custom port link data for restricted users (auto-refresh polling)."""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        containers_data = []
+        for cont in viewConts:
+            custom_link = getattr(cont, 'customPortsLink', '-')
+            if custom_link and custom_link != '-':
+                containers_data.append({
+                    'name': cont.name,
+                    'status': cont.status,
+                    'customPortsLink': custom_link
+                })
+        return jsonify({'status': 'success', 'containers': containers_data})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/api/validate-port')
 def validate_port():
     """AJAX endpoint to validate a custom port mapping pair."""
@@ -872,8 +936,8 @@ def dlconfigure():
         authorized_custom_users = valid_custom_users
 
         if local_or_remote == 'r':
-            all_users = list(set([runAsUser] + locker_admins + authorized_custom_users))
-            rewrite_sso_authorized_users(all_users)
+            full_users = list(set([runAsUser] + locker_admins))
+            rewrite_sso_authorized_users(full_users, authorized_custom_users)
 
     try:
         utils.writeConfig(config_file_path,config)
@@ -1854,7 +1918,7 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     if local_or_remote == 'r':
         try:
-            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], allowedUsers=list(set([curUser] + locker_admins + authorized_custom_users)), contStartupScriptTxt=contStartupScriptTxt)
+            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], fullAccessUsers=list(set([curUser] + locker_admins)), restrictedUsers=authorized_custom_users, contStartupScriptTxt=contStartupScriptTxt)
         except Exception as e:
             raise Exception('Error setting up Apache SSO proxy in start_container: ' + str(e))
 

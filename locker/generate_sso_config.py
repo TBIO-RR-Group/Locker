@@ -27,17 +27,19 @@ def main():
     data_content.append(f"REDIRECT_URL\t{cred_settings.get('redirect_url', 'https://rdproxy.bms.com/rdproxyig/redirect.cgi')}")
     data_content.append(f"VALIDATE_URL\t{cred_settings.get('validate_url', 'https://rdproxy.bms.com/rdproxyig/validate.cgi')}")
 
-    # Build list of authorized users (avoid duplicates)
-    authorized_users = set()
+    # Build list of authorized users with roles (avoid duplicates)
+    # Owner + admins get 'full' access; custom authorized users get 'restricted'
+    full_users = set()
+    restricted_users = set()
 
-    # Add admin users from config
+    # Add admin users from config as full-access
     admin_users = locker_services.get('ADMIN_USERNAME', [])
     for admin in admin_users:
-        authorized_users.add(admin)
+        full_users.add(admin)
 
-    # Add the current running user
+    # Add the current running user as full-access
     current_user = os.environ.get('RUNASUSER', 'default_user')
-    authorized_users.add(current_user)
+    full_users.add(current_user)
 
     # Load custom authorized users from user's config.json (if it exists)
     try:
@@ -50,15 +52,22 @@ def main():
                     user_config = json.load(f)
                 custom_users = user_config.get('config_authorized_users', [])
                 for user in custom_users:
-                    authorized_users.add(user)
+                    restricted_users.add(user)
                 if custom_users:
                     print(f"Loaded {len(custom_users)} custom authorized users from {config_json_path}")
     except Exception as e:
         print(f"Warning: Could not load custom authorized users from config.json: {e}")
 
-    # Add users to data content
-    for user in sorted(authorized_users):
-        data_content.append(user)
+    # Remove any restricted users who are already full-access (owner/admin)
+    restricted_users -= full_users
+
+    # Add role-annotated user lines to data content
+    for user in sorted(full_users):
+        data_content.append(f"{user}\tfull")
+    for user in sorted(restricted_users):
+        data_content.append(f"{user}\trestricted")
+
+    authorized_users = full_users | restricted_users
 
     # Read the current SSOApache.pm file
     with open('/perl_mods/SSOApache.pm', 'r') as f:
@@ -81,8 +90,10 @@ def main():
         # Write external authorized users file for dynamic reload by SSOApache.pm
         ext_users_file = '/tmp/sso_authorized_users.txt'
         with open(ext_users_file, 'w') as f:
-            for user in sorted(authorized_users):
-                f.write(user + '\n')
+            for user in sorted(full_users):
+                f.write(f"{user}\tfull\n")
+            for user in sorted(restricted_users):
+                f.write(f"{user}\trestricted\n")
         os.chmod(ext_users_file, 0o666)
         print(f"Wrote {len(authorized_users)} users to {ext_users_file}")
 

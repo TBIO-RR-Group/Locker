@@ -1,6 +1,6 @@
 import time
 import calendar
-from flask import request, redirect
+from flask import request, redirect, g
 import requests
 import os
 import re
@@ -76,6 +76,7 @@ def smAuth(request, requiredUsers, validatedCookies):
         validatedCookieVals = validatedCookies[smSession]
         if validatedCookieVals[2] in requiredUsers:
             logger.info(f'User {validatedCookieVals[2]} authorized')
+            g.authenticated_user = validatedCookieVals[2]
             return None
         else:
             logger.info(f'User {validatedCookieVals[2]} not authorized')
@@ -122,4 +123,5 @@ def smAuth(request, requiredUsers, validatedCookies):
     numCookies = len(validatedCookies.keys())
     logger.info(f'ForgeRock authentication successful for user {respValsHash["User"]}, cached sessions: {numCookies}')
 
+    g.authenticated_user = respValsHash["User"]
     return None
