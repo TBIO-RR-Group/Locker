@@ -954,13 +954,27 @@ def SSORedirectUrl(url):
     print("Location: " + location)
     print()
 
+def _getExternalSchemeAndHost():
+    """Get the external scheme and host:port, accounting for reverse proxies (e.g. ELB)."""
+    scheme = os.environ.get('HTTP_X_FORWARDED_PROTO') or os.environ.get('REQUEST_SCHEME') or 'http'
+    # HTTP_HOST includes the port if non-standard, matching what the browser used
+    host = os.environ.get('HTTP_HOST')
+    if not host:
+        port = os.environ.get('HTTP_X_FORWARDED_PORT') or os.environ.get('SERVER_PORT') or ''
+        host = os.environ.get('SERVER_NAME') or 'localhost'
+        if port and port not in ('80', '443'):
+            host = host + ':' + port
+    return scheme, host
+
 def getCGIScriptFullUrl():
-    fullUrl = os.environ.get('REQUEST_SCHEME') + "://" + os.environ.get('SERVER_NAME') + ":" + os.environ.get('SERVER_PORT') + os.environ.get('REQUEST_URI')
+    scheme, host = _getExternalSchemeAndHost()
+    fullUrl = scheme + "://" + host + os.environ.get('REQUEST_URI')
     return(fullUrl)
 
 #same as above function but doesn't include query string
 def getCGIScript():
-    domain = os.environ.get('REQUEST_SCHEME') + "://" + os.environ.get('SERVER_NAME') + ":" + os.environ.get('SERVER_PORT') + os.environ.get('SCRIPT_NAME')
+    scheme, host = _getExternalSchemeAndHost()
+    domain = scheme + "://" + host + os.environ.get('SCRIPT_NAME')
     return(domain)
 
 
@@ -1230,8 +1244,8 @@ def copy_ssl_certificates_to_ec2(server_username, hostname):
         
         # Define local paths for SSL certificates (adjust these paths as needed)
         # These should point to your bind-mounted certificate files
-        local_domain_crt = '/domain.crt'  # Adjust path as needed
-        local_domain_key = '/domain.key'  # Adjust path as needed
+        local_domain_crt = '/ssl_certs/domain.crt'
+        local_domain_key = '/ssl_certs/domain.key'
         
         # Define remote paths on EC2 instance
         remote_certs_dir = '/etc/ssl/certs/'
