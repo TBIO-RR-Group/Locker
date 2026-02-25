@@ -355,7 +355,7 @@ def start_locker_image_func(exec_exit=True):
          json_formatted_res_str = json.dumps(startLocker_image_res, indent=2)
          cgi_exit("<b>Error</b>: failed starting Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='start_locker_image_btn')
 
-      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='http://{}:{}'>here</a>.".format(remote_hostname,lockerPort)
+      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='https://{}'>here</a>.".format(remote_hostname)
       startedLockerFullMsg = startedLockerMsg + "<br>You will also receive an email with this information."
 
       if exec_exit:
@@ -627,7 +627,7 @@ def update_locker_func():
       if not update_res['success']:
          json_formatted_res_str = json.dumps(update_res, indent=2)
          cgi_exit("<b>Error</b>: failed updating Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='update_locker_btn')
-      startedLockerMsg = f"<b>Success</b>: Locker was updated on the remote server, access it <a href='http://{instance_hostname}:5000'>here</a>."
+      startedLockerMsg = f"<b>Success</b>: Locker was updated on the remote server, access it <a href='https://{instance_hostname}'>here</a>."
       cgi_exit(startedLockerMsg,config_btn='update_locker_btn')
 
    template = env.get_template('res_mesg.html')

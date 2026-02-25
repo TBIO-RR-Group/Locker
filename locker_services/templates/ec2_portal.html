@@ -120,7 +120,7 @@
               ip = row.ip;
               {{ config.ip_to_hostname }}
             }
-            var locker_link = "http://" + hostname + ":5000";
+            var locker_link = "https://" + hostname;
             var ssh_link = "ssh://{{ config.ami_user }}@" + row.ip;
             return "<a href='" + locker_link + "'>Locker</a>&nbsp;|&nbsp;<a title='Note that this SSH link will only work on Mac/Linux and not on Windows. On Windows you will need to configure an SSH client such as PuTTY to SSH to the server at: {{ config.ami_user }}@" + row.ip + " and use your specified SSH private key (password login not supported).' href='" + ssh_link + "'>SSH</a>";
           }
