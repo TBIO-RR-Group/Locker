@@ -589,19 +589,10 @@ def start_ec2_instance_func():
          else:
             break
 
-      startLockerContCmd = (
-         'for i in $(seq 1 30); do docker info > /dev/null 2>&1 && break || sleep 1; done; '
-         'docker info > /dev/null 2>&1 || { echo "Docker daemon not ready after 30s" >&2; exit 1; }; '
-         'CONT_ID=$(docker ps -a -q -f "name=^locker_\w+_\d+$" | head -1); '
-         'if [ -z "$CONT_ID" ]; then echo "No matching Locker container found" >&2; exit 1; fi; '
-         'docker start "$CONT_ID"'
-      )
+      startLockerContCmd = 'if [ ! -z $(docker ps -a -q -f "name=^locker_\w+_\d+$" | head -1) ]; then docker start $(docker ps -a -q -f "name=^locker_\w+_\d+$" | head -1); fi'
       remoteRes = utils.execRemoteCmd(startLockerContCmd,username,instance_ip,sshprivkey=sshprivkey_docker_env_admin_key)
-      if not remoteRes['success']:
-         cgi_exit(f"Successfully started instance {instance_id} having ip address {instance_ip}, but error starting Locker docker container on remote host: " + remoteRes['error_msg'])
-      elif remoteRes['exit_code'] != 0:
-         stderr_output = ''.join(remoteRes.get('stderr_lines', []))
-         cgi_exit(f"Successfully started instance {instance_id} having ip address {instance_ip}, but error starting Locker docker container on remote host: " + stderr_output.strip())
+      if not remoteRes['success'] or not remoteRes['exit_code'] == 0:
+         cgi_exit(f"Successfully started instance {instance_id} having ip address {instance_ip}, but error starting Locker docker containers on remote host: " + remoteRes['error_msg'])
       else:
          cgi_exit(f"Successfully started instance {instance_id} having ip address {instance_ip}")
    else:
