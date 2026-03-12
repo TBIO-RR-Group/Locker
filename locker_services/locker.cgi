@@ -589,7 +589,7 @@ def start_ec2_instance_func():
          else:
             break
 
-      startLockerContCmd = 'if [ ! -z $(docker ps -a -q -f "name=^locker_\w+_\d+$") ]; then docker start $(docker ps -a -q -f "name=^locker_\w+_\d+$"); fi'
+      startLockerContCmd = 'if [ ! -z $(docker ps -a -q -f "name=^locker_\w+_\d+$" | head -1) ]; then docker start $(docker ps -a -q -f "name=^locker_\w+_\d+$" | head -1); fi'
       remoteRes = utils.execRemoteCmd(startLockerContCmd,username,instance_ip,sshprivkey=sshprivkey_docker_env_admin_key)
       if not remoteRes['success'] or not remoteRes['exit_code'] == 0:
          cgi_exit(f"Successfully started instance {instance_id} having ip address {instance_ip}, but error starting Locker docker containers on remote host: " + remoteRes['error_msg'])
