@@ -636,7 +636,7 @@ def getLockerInstances(creator=None):
 
     return(allLockerInstances)
 
-#Will start, stop, or terminate a running EC2, but only if it's 'Creator' tag is equal to the SiteMinder user accessing
+#Will start, stop, or terminate a running EC2, but only if it's 'Creator' tag is equal to the SSO user accessing
 #the web page
 def SMUserEc2Action(instanceId=None, aws_region='us-east-1', action=None):
 
@@ -954,13 +954,27 @@ def SSORedirectUrl(url):
     print("Location: " + location)
     print()
 
+def _getExternalSchemeAndHost():
+    """Get the external scheme and host:port, accounting for reverse proxies (e.g. ELB)."""
+    scheme = os.environ.get('HTTP_X_FORWARDED_PROTO') or os.environ.get('REQUEST_SCHEME') or 'http'
+    # HTTP_HOST includes the port if non-standard, matching what the browser used
+    host = os.environ.get('HTTP_HOST')
+    if not host:
+        port = os.environ.get('HTTP_X_FORWARDED_PORT') or os.environ.get('SERVER_PORT') or ''
+        host = os.environ.get('SERVER_NAME') or 'localhost'
+        if port and port not in ('80', '443'):
+            host = host + ':' + port
+    return scheme, host
+
 def getCGIScriptFullUrl():
-    fullUrl = os.environ.get('REQUEST_SCHEME') + "://" + os.environ.get('SERVER_NAME') + ":" + os.environ.get('SERVER_PORT') + os.environ.get('REQUEST_URI')
+    scheme, host = _getExternalSchemeAndHost()
+    fullUrl = scheme + "://" + host + os.environ.get('REQUEST_URI')
     return(fullUrl)
 
 #same as above function but doesn't include query string
 def getCGIScript():
-    domain = os.environ.get('REQUEST_SCHEME') + "://" + os.environ.get('SERVER_NAME') + ":" + os.environ.get('SERVER_PORT') + os.environ.get('SCRIPT_NAME')
+    scheme, host = _getExternalSchemeAndHost()
+    domain = scheme + "://" + host + os.environ.get('SCRIPT_NAME')
     return(domain)
 
 
@@ -1064,10 +1078,30 @@ def getSSOUser():
     if validatedCookieVals is not None:
         return(validatedCookieVals)
 
-    validateResp = requests.get(config.validate_url,cookies={ config.SSO_SESSION_COOKIE_NAME: ssoSession })
-    respLines = validateResp.text.splitlines()
+    # ForgeRock requires browser-like headers for successful validation
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+    }
 
-    if respLines[0] != 'Success':
+    try:
+        validateResp = requests.get(
+            config.validate_url,
+            cookies={config.SSO_SESSION_COOKIE_NAME: ssoSession},
+            headers=headers,
+            allow_redirects=True,
+            timeout=10
+        )
+        respLines = validateResp.text.splitlines()
+    except Exception as e:
+        print(f"ForgeRock validation request failed: {str(e)}")
+        return(None)
+
+    if len(respLines) == 0 or respLines[0] != 'Success':
         return(None)
 
     respValsHash = {}
@@ -1194,6 +1228,64 @@ def get_locker_info_from_ec2(ip_address: str) -> str:
     except Exception as e:
         printTEXT(f"Error getting locker version from EC2 instance {ip_address}: {str(e)}")
     
+
+def copy_ssl_certificates_to_ec2(server_username, hostname):
+    """
+    Copy domain.crt and domain.key files to the EC2 instance.
+    These are typically bind-mounted SSL certificate files.
+    """
+    try:
+        # Get the SSH private key for connecting to EC2
+        sshprivkey_admin_key = slurpFile(config.KEYLOC)
+        
+        # Establish SSH connection
+        ssh = sshConnect(server_username, hostname, sshprivkey=sshprivkey_admin_key)
+        scp = SCPClient(ssh.get_transport())
+        
+        # Define local paths for SSL certificates (adjust these paths as needed)
+        # These should point to your bind-mounted certificate files
+        local_domain_crt = '/ssl_certs/domain.crt'
+        local_domain_key = '/ssl_certs/domain.key'
+        
+        # Define remote paths on EC2 instance
+        remote_certs_dir = '/etc/ssl/certs/'
+        remote_private_dir = '/etc/ssl/private/'
+        
+        # Create SSL directories on remote EC2 instance
+        remote_mkdir_cmd = f'sudo mkdir -p {remote_certs_dir} {remote_private_dir}'
+        mkdir_result = execRemoteCmd(remote_mkdir_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+        if not mkdir_result['success']:
+            return {'success': False, 'error_msg': f'Failed to create SSL directories: {mkdir_result["error_msg"]}'}
+        
+        # Copy domain.crt
+        if os.path.isfile(local_domain_crt):
+            scp.put(local_domain_crt, '/tmp/domain.crt', recursive=False)
+            mv_crt_cmd = f'sudo mv /tmp/domain.crt {remote_certs_dir}domain.crt && sudo chmod 644 {remote_certs_dir}domain.crt'
+            mv_crt_result = execRemoteCmd(mv_crt_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+            if not mv_crt_result['success']:
+                scp.close()
+                return {'success': False, 'error_msg': f'Failed to move domain.crt: {mv_crt_result["error_msg"]}'}
+        else:
+            scp.close()
+            return {'success': False, 'error_msg': f'Local domain.crt file not found at {local_domain_crt}'}
+        
+        # Copy domain.key
+        if os.path.isfile(local_domain_key):
+            scp.put(local_domain_key, '/tmp/domain.key', recursive=False)
+            mv_key_cmd = f'sudo mv /tmp/domain.key {remote_private_dir}domain.key && sudo chmod 600 {remote_private_dir}domain.key'
+            mv_key_result = execRemoteCmd(mv_key_cmd, server_username, hostname, sshprivkey=sshprivkey_admin_key)
+            if not mv_key_result['success']:
+                scp.close()
+                return {'success': False, 'error_msg': f'Failed to move domain.key: {mv_key_result["error_msg"]}'}
+        else:
+            scp.close()
+            return {'success': False, 'error_msg': f'Local domain.key file not found at {local_domain_key}'}
+        
+        scp.close()
+        return {'success': True, 'message': 'SSL certificates copied successfully'}
+        
+    except Exception as e:
+        return {'success': False, 'error_msg': f'Exception during SSL certificate copy: {str(e)}'}
 
 def update_locker_on_ec2(locker_username, server_username, current_container_id, hostname, sshprivkey, sshport=22):
     """

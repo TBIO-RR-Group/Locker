@@ -11,7 +11,7 @@ credential_settings:
   ##   validate_url and if the validation fails you will be redirected to redirect_url
   ##   to login (that then redirects you back to Locker upon successful login).
   ##
-  ## - We use SiteMinder inside our company for this, but you can create your own services at 
+  ## - We use ForgeRock/Ping inside our company for this, but you can create your own services at 
   ##   redirect_url and validate_url to handle in your own way (also see our repo ldap_jwt_sso)
   redirect_url: "https://auth.example.com/redirect.cgi"
   validate_url: "https://auth.example.com/validate.cgi"

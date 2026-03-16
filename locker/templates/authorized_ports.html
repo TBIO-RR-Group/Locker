@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='DockerLocal.css') }}">
+  <title>Authorized Port Access</title>
+</head>
+
+<body>
+
+<nav class="navbar navbar-default" style="border: 0px; background-color: white;">
+  <div class="container-fluid">
+    <ul class="nav nav-tabs">
+      <li><img src="{{ url_for('static',filename='logo.jpg') }}" alt="Locker" style="max-width:64px;max-height:64px;width:auto;height:auto"></li>
+      <li><span class="btn btn-success">Authorized Ports</span></li>
+    </ul>
+  </div>
+</nav>
+
+<script src="{{ url_for('static', filename='jquery-1.11.1.min.js') }}"></script>
+<script src="{{ url_for('static', filename='bootstrap.min.js') }}"></script>
+
+<center>
+   <h3>Authorized Port Access</h3>
+   <p style="color: #666;">You have been granted access to the following custom port services.</p>
+</center>
+
+{% if containers %}
+<div style="width: 90%; margin: 20px auto;">
+   <table id="grid-authorized-ports" class="table table-condensed table-hover table-striped">
+      <thead>
+         <tr>
+            <th>Container Name</th>
+            <th>Status</th>
+            <th>Custom Port Links</th>
+         </tr>
+      </thead>
+      <tbody>
+         {% for cont in containers %}
+         <tr data-container-name="{{ cont.name }}">
+            <td>{{ cont.name }}</td>
+            <td>{{ cont.status }}</td>
+            <td class="custom-ports-cell">{{ cont.customPortsLink|safe }}</td>
+         </tr>
+         {% endfor %}
+      </tbody>
+   </table>
+</div>
+{% else %}
+<div style="text-align: center; margin-top: 40px; color: #999;">
+   <p>No custom port services are currently available.</p>
+</div>
+{% endif %}
+
+<script>
+   $(document).ready(function () {
+      function updateAuthorizedPorts() {
+         $.ajax({
+            url: '/api/authorized-ports',
+            method: 'GET',
+            timeout: 5000,
+            success: function(data) {
+               if (data.status === 'success') {
+                  var tbody = $('#grid-authorized-ports tbody');
+                  if (data.containers.length === 0) {
+                     if ($('#grid-authorized-ports').length) {
+                        tbody.html('<tr><td colspan="3" style="text-align:center; color:#999;">No custom port services are currently available.</td></tr>');
+                     }
+                     return;
+                  }
+                  // Ensure table exists (create if page loaded with no containers)
+                  if (!$('#grid-authorized-ports').length) {
+                     location.reload();
+                     return;
+                  }
+                  tbody.empty();
+                  data.containers.forEach(function(cont) {
+                     tbody.append(
+                        '<tr data-container-name="' + cont.name + '">' +
+                        '<td>' + cont.name + '</td>' +
+                        '<td>' + cont.status + '</td>' +
+                        '<td class="custom-ports-cell">' + cont.customPortsLink + '</td>' +
+                        '</tr>'
+                     );
+                  });
+               }
+            },
+            error: function(xhr, status, error) {
+               console.log('Error updating authorized ports:', error);
+            }
+         });
+      }
+
+      setInterval(updateAuthorizedPorts, 5000);
+      setTimeout(updateAuthorizedPorts, 2000);
+   });
+</script>
+
+</body>
+</html>

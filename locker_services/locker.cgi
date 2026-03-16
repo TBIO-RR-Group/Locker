@@ -174,6 +174,12 @@ def new_ec2_locker_func():
       hostname = config['remoteHostname']
       install_docker_flag = True
       (config,template) = start_docker_func()
+      
+      # Copy SSL certificate files to EC2 instance
+      copy_ssl_certs_res = utils.copy_ssl_certificates_to_ec2(server_username, hostname)
+      if not copy_ssl_certs_res['success']:
+         cgi_exit("<b>Error</b>: Failed copying SSL certificates to EC2 instance: " + copy_ssl_certs_res['error_msg'], config_btn="new_ec2_locker_btn")
+      
       locker_homedir = ""
       sshprivkey_locker = sshprivkey
       sshpubkey_locker = sshpubkey
@@ -349,7 +355,7 @@ def start_locker_image_func(exec_exit=True):
          json_formatted_res_str = json.dumps(startLocker_image_res, indent=2)
          cgi_exit("<b>Error</b>: failed starting Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='start_locker_image_btn')
 
-      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='http://{}:{}'>here</a>.".format(remote_hostname,lockerPort)
+      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='https://{}'>here</a>.".format(remote_hostname)
       startedLockerFullMsg = startedLockerMsg + "<br>You will also receive an email with this information."
 
       if exec_exit:
@@ -621,7 +627,7 @@ def update_locker_func():
       if not update_res['success']:
          json_formatted_res_str = json.dumps(update_res, indent=2)
          cgi_exit("<b>Error</b>: failed updating Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='update_locker_btn')
-      startedLockerMsg = f"<b>Success</b>: Locker was updated on the remote server, access it <a href='http://{instance_hostname}:5000'>here</a>."
+      startedLockerMsg = f"<b>Success</b>: Locker was updated on the remote server, access it <a href='https://{instance_hostname}'>here</a>."
       cgi_exit(startedLockerMsg,config_btn='update_locker_btn')
 
    template = env.get_template('res_mesg.html')

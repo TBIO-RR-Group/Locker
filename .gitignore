@@ -3,3 +3,4 @@
 *.rsa
 *__pycache__*
 locker_services/download/*
+config.yml

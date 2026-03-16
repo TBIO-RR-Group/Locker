@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, jsonify, send_from_directory, g
 from io import BytesIO
 import json
 import os
@@ -20,14 +20,25 @@ import DockerRegistry
 import utils
 import ecr
 from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
 from pathlib import Path
 from Config import Config
-import SiteMinder
+import auth
 import textwrap
-#import logging
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load locker configuration
 config = Config("/config.yml")
+
+# Log authentication configuration
+logger.info("Locker starting with ForgeRock/Ping authentication")
+logger.info(f"SSO Cookie Name: {config.SSO_SESSION_COOKIE_NAME}")
+logger.info(f"Redirect URL: {config.redirect_url}")
+logger.info(f"Validate URL: {config.validate_url}")
 
 if not DockerLocal.checkDockerRunning():
     print("Error: Docker is not running, please start Docker before using this app.")
@@ -53,6 +64,7 @@ configProxies = config.proxies
 locker_admins = config.locker_admins
 if locker_admins is None:
     locker_admins = []
+authorized_custom_users = []
 containerUserHomedir = config.containerUserHomedir
 containerUser = config.containerUser
 MAX_RECOMMENDED_RUNNING_CONTAINERS = config.MAX_RECOMMENDED_RUNNING_CONTAINERS
@@ -80,9 +92,9 @@ if not utils.empty(cli_run_as_user):
 #(accesible over the internet) --- containers started (and the services running in them
 #such as sshd, RStudio, Jupyter, VSCode, etc.) in each mode will similarly
 #be accesible only locally or remotely over the internet. Containers started when running
-#in remote mode will in addition have an Apache-based mod_perl SiteMinder proxy setup to
+#in remote mode will in addition have an Apache-based mod_perl SSO proxy setup to
 #only allow access to the user starting the container, for security (i.e. the user will
-#need to SiteMinder authenticate and any SiteMinder cookies they present must validate as
+#need to SSO authenticate and any SSO cookies they present must validate as
 #cookies belonging to them in order to access the started services in the container).
 #When the app is run locally, the app and started containers can only be accessed on
 #localhost and a regular "heartbeat" message from the browser will be tracked, with the app
@@ -145,10 +157,17 @@ if utils.empty(hostLockerPort):
 
 mainAppContainerPort = config.mainAppContainerPort_local
 vscodeContainerPort = config.vscodeContainerPort_local
+
+# Internal service ports - the actual ports services listen on inside containers.
+# These are always the "local" config ports regardless of local/remote mode.
+mainAppServicePort = config.mainAppContainerPort_local   # e.g. "8888"
+vscodeServicePort = config.vscodeContainerPort_local     # e.g. "8887"
+
+RESERVED_INTERNAL_PORTS = {"22", "80", "81", "8887", "8888"}
+
 if local_or_remote == 'r':
-    #For remote use, these ports will be used to access the main app and vscode and will be
-    #Apache proxy servers (which will SiteMinder authenticate and then proxy to the backend
-    #actual services):
+    #For remote use, these ports will be used to check port bindings.
+    #The actual services run on mainAppServicePort/vscodeServicePort internally.
     mainAppContainerPort = config.mainAppContainerPort_remote
     vscodeContainerPort = config.vscodeContainerPort_remote
 
@@ -166,9 +185,10 @@ terminateOfflineImageConfigThreadSignals = {}
 cachedImageInfo = {}
 
 #At these request endpoints, don't try to stop offline enabling containers that have not started doing the actual offlining but weren't explicitly canceled
-dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status' }
+dontStopNonConfiguringOfflineEnableContsRequestEndpoints = { 'exec_offline_image', 'cancel_offline_enable', 'heartbeat', 'static', 'favicon', 'paths_ac', 'locker_status', 'validate_port', 'authorized_ports', 'authorized_ports_api' }
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 base_folder = app.root_path
 files_folder = os.path.join(app.root_path,'files')
 fonts_folder = os.path.join(app.root_path,'fonts')
@@ -219,10 +239,95 @@ print("Running on: " + running_os)
 print("User homedir at: " + user_homedir)
 print("Configuration file at: " + config_file_path)
 
+try:
+    if os.path.exists(config_file_path):
+        _startup_config = utils.readConfig(config_file_path, rebase=False)
+        authorized_custom_users = _startup_config.get('config_authorized_users', [])
+except Exception:
+    authorized_custom_users = []
+
+def rewrite_sso_authorized_users(full_users, restricted_users=None):
+    """
+    Update the authorized users list that Apache's SSOApache.pm enforces.
+
+    Users are written with tab-delimited roles: username\\tfull or username\\trestricted.
+    Full-access users (owner + admins) get unrestricted access; restricted users can
+    only access custom port proxy URLs and the /authorized-ports landing page.
+
+    1. Write /tmp/sso_authorized_users.txt atomically (temp file + os.rename).
+       SSOApache.pm polls this file's mtime every ~2 seconds and reloads it,
+       so Apache picks up the change without any restart.
+    2. Rewrite the __DATA__ section of SSOApache.pm for persistence across
+       container restarts where generate_sso_config.py may not re-run.
+    """
+    if restricted_users is None:
+        restricted_users = []
+
+    sorted_full = sorted(set(full_users))
+    sorted_restricted = sorted(set(restricted_users) - set(full_users))
+
+    # Build role-annotated user lines
+    def _build_user_lines():
+        lines = []
+        for user in sorted_full:
+            lines.append(f"{user}\tfull")
+        for user in sorted_restricted:
+            lines.append(f"{user}\trestricted")
+        return lines
+
+    user_lines = _build_user_lines()
+    total_users = len(user_lines)
+
+    # --- 1. Write external file (what Apache reads at runtime) ---
+    ext_users_file = '/tmp/sso_authorized_users.txt'
+    try:
+        with open(ext_users_file, 'w') as f:
+            for line in user_lines:
+                f.write(line + '\n')
+        logger.info('Wrote %d authorized users to %s', total_users, ext_users_file)
+    except Exception as e:
+        logger.error('Error writing external authorized users file: %s', str(e))
+
+    # --- 2. Rewrite __DATA__ in SSOApache.pm (persistence for restarts) ---
+    sso_pm_path = '/perl_mods/SSOApache.pm'
+    if not os.path.exists(sso_pm_path):
+        logger.warning('SSOApache.pm not found at %s, skipping __DATA__ update', sso_pm_path)
+        return
+
+    try:
+        with open(sso_pm_path, 'r') as f:
+            content = f.read()
+
+        parts = re.split(r'^__DATA__\s*$', content, maxsplit=1, flags=re.MULTILINE)
+        if len(parts) != 2:
+            logger.error('__DATA__ section not found in SSOApache.pm')
+            return
+
+        before_data = parts[0]
+
+        data_content = []
+        data_content.append(f"SSO_SESSION_COOKIE_NAME\t{config.SSO_SESSION_COOKIE_NAME}")
+        data_content.append(f"REDIRECT_TARGET_ARGNAME\t{config.REDIRECT_TARGET_ARGNAME}")
+        data_content.append(f"REDIRECT_URL\t{config.redirect_url}")
+        data_content.append(f"VALIDATE_URL\t{config.validate_url}")
+
+        for line in user_lines:
+            data_content.append(line)
+
+        data_section = '\n'.join(data_content)
+        new_content = before_data + '__DATA__\n' + data_section + '\n'
+
+        with open(sso_pm_path, 'w') as f:
+            f.write(new_content)
+
+        logger.info('Updated SSOApache.pm __DATA__ section with %d authorized users', total_users)
+    except Exception as e:
+        logger.error('Error rewriting SSOApache.pm: %s', str(e))
+
 validatedCookies = {}
 
 #See here: https://pythonise.com/series/learning-flask/python-before-after-request
-#Do SiteMinder authentication before all requests if running remotely. Returning
+#Do SSO authentication before all requests if running remotely. Returning
 #None means allow the request to go forward and get processed, otherwise display/
 #enact what is returned without processing the actual request.
 @app.before_request
@@ -231,7 +336,25 @@ def before_request_func():
     req_ep = ''
     if not utils.empty(request.endpoint):
         req_ep = request.endpoint
-    print('In before_request_func, endpoint: ' + req_ep)
+    
+    logger.info(f'Processing request for endpoint: {req_ep}')
+    
+    # Log cookie information for debugging
+    all_cookies = dict(request.cookies)
+    if all_cookies:
+        cookie_names = list(all_cookies.keys())
+        logger.info(f'Request cookies: {cookie_names}')
+        
+        # Check for expected SSO cookie
+        expected_cookie = config.SSO_SESSION_COOKIE_NAME
+        if expected_cookie in all_cookies:
+            cookie_value = all_cookies[expected_cookie]
+            logger.info(f'Found {expected_cookie} cookie (length: {len(cookie_value)})')
+        else:
+            logger.info(f'Expected {expected_cookie} cookie not found')
+    else:
+        logger.info('No cookies received in request')
+    
     if req_ep not in dontStopNonConfiguringOfflineEnableContsRequestEndpoints:
         stopNonConfiguringOfflineEnableConts()
 
@@ -239,8 +362,30 @@ def before_request_func():
         runAsUsers = { runAsUser: True }
         for curU in locker_admins:
             runAsUsers[curU] = True
-        return SiteMinder.smAuth(request, runAsUsers, validatedCookies)
+        for curU in authorized_custom_users:
+            runAsUsers[curU] = True
+
+        logger.info('Remote mode: authenticating user with ForgeRock/Ping')
+        auth_result = auth.smAuth(request, runAsUsers, validatedCookies)
+
+        if auth_result is not None:
+            logger.info(f'Authentication failed or access denied for endpoint: {req_ep}')
+            return auth_result
+
+        logger.info(f'Authentication successful for endpoint: {req_ep}')
+
+        # Defense-in-depth: restrict custom authorized users to allowed endpoints only
+        current_user = getattr(g, 'authenticated_user', None)
+        full_access_users = set([runAsUser] + locker_admins)
+        if current_user and current_user not in full_access_users:
+            allowed_endpoints = {'authorized_ports', 'authorized_ports_api', 'locker_status', 'static', 'heartbeat'}
+            if req_ep not in allowed_endpoints:
+                logger.info(f'Restricted user {current_user} denied access to endpoint: {req_ep}')
+                return "Access Denied", 403
+
+        return None
     else:
+        logger.info('Local mode: skipping authentication')
         return None
 
 def getAvailablePort(lockerUsedContPorts):
@@ -282,6 +427,35 @@ def getUsedLockerContainerPorts():
 
     return(lockerUsedPorts)
 
+def getAllUsedHostPorts():
+    """Return a set of ALL host ports bound by any Docker container (not just standard Locker ports)."""
+    try:
+        docker_client = DockerLocal.getDockerClient()
+    except Exception:
+        return set()
+
+    try:
+        containers = docker_client.containers.list(all=True)
+    except Exception:
+        return set()
+
+    usedPorts = set()
+    for curContObj in containers:
+        try:
+            curContObj.reload()
+            networkPorts = curContObj.attrs.get('NetworkSettings', {}).get('Ports', {})
+            if networkPorts:
+                for contPort, bindings in networkPorts.items():
+                    if bindings:
+                        for binding in bindings:
+                            hostPort = binding.get('HostPort', '')
+                            if hostPort:
+                                usedPorts.add(hostPort)
+        except Exception:
+            continue
+
+    return usedPorts
+
 def getLockerContainers():
 
     try:
@@ -312,6 +486,13 @@ def getLockerContainers():
         except Exception as e:
             continue
 
+        # Get container's Docker bridge IP for direct proxying to internal service ports
+        container_ip = ''
+        try:
+            container_ip = curContObj.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+        except Exception:
+            pass
+
         #SSH port
         if "22" in portsInfo:
             curContObj.sshLink = '<a href="' + url_for('ssh_access') + f'?user={containerUser}&host={host}&port={portsInfo["22"]}">SSH</a>'
@@ -320,10 +501,14 @@ def getLockerContainers():
         # Check if main app port was originally configured by looking at container's port configuration
         main_app_was_configured = False
         # Determine which port to check based on the main app
+        # check_port = the Docker-exposed port (80/81) for PortBindings detection
+        # health_port = the actual internal service port (8888/8887) for health checks and proxying
         if main_app == 'vscode':
             check_port = vscodeContainerPort
+            health_port = vscodeServicePort
         else:
             check_port = mainAppContainerPort
+            health_port = mainAppServicePort
             
         try:
             # Check if main app port was configured in the container (either in ExposedPorts or PortBindings)
@@ -339,15 +524,23 @@ def getLockerContainers():
             
         if main_app_was_configured:
             if curContObj.status == "running":
-                # Check if the service is actually ready
-                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, check_port)
+                # Check if the service is actually ready using the internal service port
+                is_healthy = DockerLocal.checkServiceHealth(curContObj, main_app, health_port)
                 
-                if is_healthy and check_port in portsInfo:
-                    # Service is ready - show working link
-                    if appsInIframe:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[check_port]}&title={curContObj.name}:{main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                if is_healthy and (container_ip or check_port in portsInfo):
+                    # Build proxy path using container IP + internal service port (direct routing)
+                    # or fall back to host-mapped port if container IP unavailable
+                    if container_ip:
+                        proxy_path = f"{container_ip}/{health_port}"
                     else:
-                        curContObj.mainAppLink = f'<a href="http://{host}:{portsInfo[check_port]}" title="http://{host}:{portsInfo[check_port]}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                        proxy_path = portsInfo.get(check_port, '')
+                    # Service is ready - show working link
+                    # Use jproxy (path-preserving) for Jupyter/JupyterLab, proxy (path-stripping) for others
+                    proxy_prefix = 'jproxy' if main_app in ('jupyter', 'jupyterlab') else 'proxy'
+                    if appsInIframe:
+                        curContObj.mainAppLink = f'<a href="https://{host}/iniframe?container={curContObj.name}&app={main_app}" title="{curContObj.name}:{main_app}" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
+                    else:
+                        curContObj.mainAppLink = f'<a href="https://{host}/{proxy_prefix}/{proxy_path}/" title="https://{host}/{proxy_prefix}/{proxy_path}/" style="color: #5cb85c; font-weight: bold;">{main_app}</a>'
                 else:
                     # Service is starting - show status without link
                     curContObj.mainAppLink = f'<span style="color: #f0ad4e; font-style: italic;" title="Service is starting up...">{main_app} starting...</span>'
@@ -380,14 +573,19 @@ def getLockerContainers():
             else:
                 # VSCode is secondary service
                 if curContObj.status == "running":
-                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeContainerPort)
+                    is_vscode_healthy = DockerLocal.checkServiceHealth(curContObj, 'vscode', vscodeServicePort)
                     
-                    if is_vscode_healthy and vscodeContainerPort in portsInfo:
+                    if is_vscode_healthy and (container_ip or vscodeContainerPort in portsInfo):
+                        # Build proxy path for VSCode
+                        if container_ip:
+                            vsc_proxy_path = f"{container_ip}/{vscodeServicePort}"
+                        else:
+                            vsc_proxy_path = portsInfo.get(vscodeContainerPort, '')
                         # VSCode is ready and port is available
                         if appsInIframe:                
-                            curContObj.vscodeLink = f'<a href="http://{host}:{hostLockerPort}/iniframe?port={portsInfo[vscodeContainerPort]}&title={curContObj.name}:VSCode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                            curContObj.vscodeLink = f'<a href="https://{host}/iniframe?container={curContObj.name}&app=vscode" title="{curContObj.name}:VSCode" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                         else:
-                            curContObj.vscodeLink = f'<a href="http://{host}:{portsInfo[vscodeContainerPort]}" title="http://{host}:{portsInfo[vscodeContainerPort]}" style="color: #5cb85c; font-weight: bold;">vscode</a>'
+                            curContObj.vscodeLink = f'<a href="https://{host}/proxy/{vsc_proxy_path}/" title="https://{host}/proxy/{vsc_proxy_path}/" style="color: #5cb85c; font-weight: bold;">vscode</a>'
                     else:
                         # VSCode is starting or port not yet available
                         curContObj.vscodeLink = f'<span style="color: #f0ad4e; font-style: italic;" title="vscode is starting up...">vscode starting...</span>'
@@ -398,6 +596,38 @@ def getLockerContainers():
             # VSCode not enabled or main_app is vscode
             if main_app != 'vscode':
                 curContObj.vscodeLink = '<span style="color: #777;" title="vscode not enabled">vscode (not enabled)</span>'
+        # Generate custom port links
+        custom_ports_html_parts = []
+        try:
+            port_bindings = curContObj.attrs.get('HostConfig', {}).get('PortBindings', {}) or {}
+            standard_port_keys = set()
+            for std_port in ("22", mainAppContainerPort, vscodeContainerPort):
+                standard_port_keys.add(f"{std_port}/tcp")
+                standard_port_keys.add(f"{std_port}/udp")
+
+            custom_port_numbers = sorted(
+                [k.split('/')[0] for k in port_bindings if k not in standard_port_keys],
+                key=lambda p: int(p)
+            )
+
+            for port_num in custom_port_numbers:
+                if curContObj.status == "running" and container_ip:
+                    custom_ports_html_parts.append(
+                        f'<a href="https://{host}/proxy/{container_ip}/{port_num}/" '
+                        f'target="_blank" '
+                        f'style="color: #5cb85c; font-weight: bold;" '
+                        f'title="https://{host}/proxy/{container_ip}/{port_num}/">'
+                        f'{port_num}</a>'
+                    )
+                else:
+                    custom_ports_html_parts.append(
+                        f'<span style="color: #d9534f;" title="Container is stopped">{port_num}</span>'
+                    )
+        except Exception:
+            pass
+
+        curContObj.customPortsLink = ' | '.join(custom_ports_html_parts) if custom_ports_html_parts else '-'
+
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
         viewConts.append(curContObj)
@@ -432,7 +662,8 @@ def get_container_status(container_id):
                     },
                     'links': {
                         'mainApp': getattr(container, 'mainAppLink', ''),
-                        'vscode': getattr(container, 'vscodeLink', '')
+                        'vscode': getattr(container, 'vscodeLink', ''),
+                        'customPorts': getattr(container, 'customPortsLink', '-')
                     }
                 })
         
@@ -453,7 +684,8 @@ def get_all_container_status():
                 'short_id': container.short_id,
                 'status': container.status,
                 'mainAppLink': getattr(container, 'mainAppLink', ''),
-                'vscodeLink': getattr(container, 'vscodeLink', '')
+                'vscodeLink': getattr(container, 'vscodeLink', ''),
+                'customPortsLink': getattr(container, 'customPortsLink', '-')
             })
         
         return jsonify({
@@ -462,6 +694,75 @@ def get_all_container_status():
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/authorized-ports')
+def authorized_ports():
+    """Landing page for restricted (custom authorized) users showing only custom port links."""
+    viewConts, curRunningContainerCt = getLockerContainers()
+    # Filter to only containers that have custom port links
+    containers_with_ports = []
+    for cont in viewConts:
+        custom_link = getattr(cont, 'customPortsLink', '-')
+        if custom_link and custom_link != '-':
+            containers_with_ports.append({
+                'name': cont.name,
+                'status': cont.status,
+                'customPortsLink': custom_link
+            })
+    return render_template('authorized_ports.html', containers=containers_with_ports)
+
+@app.route('/api/authorized-ports')
+def authorized_ports_api():
+    """API endpoint returning custom port link data for restricted users (auto-refresh polling)."""
+    try:
+        viewConts, curRunningContainerCt = getLockerContainers()
+        containers_data = []
+        for cont in viewConts:
+            custom_link = getattr(cont, 'customPortsLink', '-')
+            if custom_link and custom_link != '-':
+                containers_data.append({
+                    'name': cont.name,
+                    'status': cont.status,
+                    'customPortsLink': custom_link
+                })
+        return jsonify({'status': 'success', 'containers': containers_data})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/validate-port')
+def validate_port():
+    """AJAX endpoint to validate a custom port mapping pair."""
+    internal_port = request.args.get('internal_port', '').strip()
+    external_port = request.args.get('external_port', '').strip()
+
+    # Validate internal port
+    if internal_port:
+        if not internal_port.isdigit():
+            return jsonify({'valid': False, 'error': 'Internal port must be numeric'})
+        ip = int(internal_port)
+        if ip < 1 or ip > 65535:
+            return jsonify({'valid': False, 'error': 'Internal port must be between 1 and 65535'})
+        if internal_port in RESERVED_INTERNAL_PORTS:
+            return jsonify({'valid': False, 'error': f'Internal port {internal_port} is reserved by Locker'})
+
+    # Validate external port
+    if external_port:
+        if not external_port.isdigit():
+            return jsonify({'valid': False, 'error': 'External port must be numeric'})
+        ep = int(external_port)
+        if ep < 1 or ep > 65535:
+            return jsonify({'valid': False, 'error': 'External port must be between 1 and 65535'})
+        if external_port == str(hostLockerPort):
+            return jsonify({'valid': False, 'error': f'External port {external_port} is used by Locker itself'})
+        if hostUsablePorts is not None and external_port not in hostUsablePorts:
+            return jsonify({'valid': False, 'error': f'External port {external_port} is not in the allowed host port list'})
+        usedHostPorts = getAllUsedHostPorts()
+        if external_port in usedHostPorts:
+            return jsonify({'valid': False, 'error': f'External port {external_port} is already in use by a Docker container'})
+        if not utils.isPortOpen(int(external_port)):
+            return jsonify({'valid': False, 'error': f'External port {external_port} is already in use on this host'})
+
+    return jsonify({'valid': True, 'error': ''})
 
 @app.route('/favicon.ico')
 def favicon():
@@ -495,14 +796,29 @@ def ssh_access():
 @app.route('/iniframe',methods=['GET','POST'])
 def iniframe():
 
-    port = request.values.get('port')
-    title = request.values.get('title')
-    if utils.empty(port):
-        port = '80'
-    if utils.empty(title):
-        title = ''
+    container_name = request.values.get('container', '')
+    app_type = request.values.get('app', '')
+    title = f"{container_name}:{app_type}" if container_name and app_type else container_name or app_type
 
-    return f'<html><head><title>{title}</title></head><body><iframe title="iFrame port {port}" width="100%" height="100%" src="http://{host}:{port}"></iframe></body></html>'
+    # Look up container IP and service port server-side
+    proxy_path = ''
+    if container_name:
+        try:
+            docker_client = DockerLocal.getDockerClient()
+            cont = docker_client.containers.get(container_name)
+            container_ip = cont.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+            if container_ip:
+                service_port = vscodeServicePort if app_type == 'vscode' else mainAppServicePort
+                proxy_path = f"{container_ip}/{service_port}"
+        except Exception:
+            pass
+
+    if not proxy_path:
+        return render_template('error.html', error='Container not found or not running'), 404
+
+    # Use jproxy (path-preserving) for Jupyter/JupyterLab, proxy (path-stripping) for others
+    proxy_prefix = 'jproxy' if app_type in ('jupyter', 'jupyterlab') else 'proxy'
+    return f'<html><head><title>{title}</title></head><body><iframe title="{title}" width="100%" height="100%" src="/{proxy_prefix}/{proxy_path}/"></iframe></body></html>'
 
 
 #Used in the configuration page to support the user browsing the file system
@@ -563,6 +879,8 @@ def paths_ac():
 @app.route('/dlconfigure',methods=['GET','POST'])
 def dlconfigure():
 
+    global authorized_custom_users
+
     try:
         if os.path.exists(config_file_path):
             config = utils.readConfig(config_file_path,rebase=False) #don't rebase to /host_root because want to show user as it is on host (actual root /)
@@ -574,6 +892,8 @@ def dlconfigure():
         flash(fullMsg, "error")
         return render_template('error.html');
 
+    if 'config_authorized_users' not in config:
+        config['config_authorized_users'] = authorized_custom_users
 
     #Set new values if the configure.html form was submitted:
     if not utils.empty(request.values.get('set_config')) and request.values.get('set_config') == 'set':
@@ -593,6 +913,32 @@ def dlconfigure():
         new_config_repoCloneLoc = utils.valOrEmpty(request.values.get('config_repoCloneLoc'))
         config['config_repoCloneLoc'] = new_config_repoCloneLoc
 
+        # Process authorized users
+        raw_users = request.values.get('config_authorized_users', '')
+        always_authorized = set([runAsUser] + locker_admins)
+        valid_custom_users = []
+        seen = set()
+        for raw_name in raw_users.split(','):
+            raw_name = raw_name.strip()
+            if raw_name == '':
+                continue
+            try:
+                name = utils.validate_username(raw_name)
+            except ValueError as ve:
+                flash(f"Skipped invalid username '{raw_name}': {ve}", "warning")
+                continue
+            if name in always_authorized:
+                continue
+            if name not in seen:
+                seen.add(name)
+                valid_custom_users.append(name)
+        config['config_authorized_users'] = valid_custom_users
+        authorized_custom_users = valid_custom_users
+
+        if local_or_remote == 'r':
+            full_users = list(set([runAsUser] + locker_admins))
+            rewrite_sso_authorized_users(full_users, authorized_custom_users)
+
     try:
         utils.writeConfig(config_file_path,config)
     except Exception as e:
@@ -610,6 +956,10 @@ def dlconfigure():
             curOffliningImage = curImageTag
             config['curOffliningImage'] = curImageTag
             break
+
+    config['local_or_remote'] = local_or_remote
+    config['locker_admins'] = locker_admins
+    config['runAsUser'] = runAsUser
 
     return render_template('configure.html', config=config)
 
@@ -1313,7 +1663,7 @@ def genSupervisordConf(services):
     return textwrap.dedent(base)
 
 
-def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None):
+def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, other_labels = None, envVarFile = "", startupScript = "", repo_uri = None, repo_release = None, custom_ports = None):
     try:
         config = utils.readConfig(config_file_path)
         config_values = utils.readUserConfigValues(config_file_path=config_file_path)
@@ -1388,6 +1738,11 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     else:
         vscode = ''
 
+    # Merge custom port mappings
+    if custom_ports:
+        for int_port in custom_ports:
+            ports[int_port] = ""
+
     # Generate supervisord conf content in memory
     supervisord_conf_file_name = f'supervisord_{main_app}{vscode}.conf'
     supervisord_conf_content = genSupervisordConf([main_app, vscode])  # No file path = returns content
@@ -1430,22 +1785,43 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
 
     if hostUsablePorts is not None:
-        lockerUsedContPorts = getUsedLockerContainerPorts()
+        usedHostPorts = getAllUsedHostPorts()
+        # Pre-register user-specified external ports so auto-assign doesn't collide
+        if custom_ports:
+            for int_port, ext_port in custom_ports.items():
+                if ext_port:
+                    usedHostPorts.add(ext_port)
         for contPort in ports:
-            availPort = getAvailablePort(lockerUsedContPorts)
-            if availPort is None:
-                raiseException("Error: No host ports remaining to start a new container.")
-            if local_or_remote == 'l':
-                ports[contPort] = ('127.0.0.1',availPort)
+            # If this is a custom port with a user-specified external port, use it directly
+            if custom_ports and contPort in custom_ports and custom_ports[contPort]:
+                userExtPort = custom_ports[contPort]
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', userExtPort)
+                else:
+                    ports[contPort] = userExtPort
             else:
-                ports[contPort] = availPort
-            lockerUsedContPorts.add(availPort)        
+                availPort = getAvailablePort(usedHostPorts)
+                if availPort is None:
+                    raise Exception("Error: No host ports remaining to start a new container.")
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', availPort)
+                else:
+                    ports[contPort] = availPort
+                usedHostPorts.add(availPort)
     else:
         for contPort in ports:
-            if local_or_remote == 'l':
-                ports[contPort] = ('127.0.0.1',None)
+            # If this is a custom port with a user-specified external port, use it directly
+            if custom_ports and contPort in custom_ports and custom_ports[contPort]:
+                userExtPort = custom_ports[contPort]
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', userExtPort)
+                else:
+                    ports[contPort] = userExtPort
             else:
-                ports[contPort] = None
+                if local_or_remote == 'l':
+                    ports[contPort] = ('127.0.0.1', None)
+                else:
+                    ports[contPort] = None
 
     try:
         set_hostUserUid = None
@@ -1542,12 +1918,27 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     if local_or_remote == 'r':
         try:
-            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], allowedUsers=list(set([curUser] + locker_admins)), contStartupScriptTxt=contStartupScriptTxt)
+            contStartupScriptTxt = DockerLocal.setupApacheProxy(contObj, app.config['FILES_PATH'], fullAccessUsers=list(set([curUser] + locker_admins)), restrictedUsers=authorized_custom_users, contStartupScriptTxt=contStartupScriptTxt)
         except Exception as e:
-            raise Exception('Error setting up Apache SiteMinder proxy in start_container: ' + str(e))
+            raise Exception('Error setting up Apache SSO proxy in start_container: ' + str(e))
 
     if not utils.empty(repo_uri):
         contStartupScriptTxt = cloneRepoUriInContainer(repo_uri,repo_release,contStartupScriptTxt)
+
+    # Set Jupyter/JupyterLab base_url for proxy path awareness (must be done before supervisord starts)
+    if main_app in ('jupyter', 'jupyterlab'):
+        try:
+            container_ip = contObj.attrs.get('NetworkSettings', {}).get('IPAddress', '')
+            if container_ip:
+                jupyter_base_url = f'/jproxy/{container_ip}/{mainAppServicePort}/'
+                jupyter_config = f"c.NotebookApp.base_url = '{jupyter_base_url}'\nc.ServerApp.base_url = '{jupyter_base_url}'\n"
+                conf_dir = f'{containerUserHomedir}/.jupyter'
+                conf_file = f'{conf_dir}/jupyter_notebook_config.py'
+                DockerLocal.execRunWrap(contObj, f'mkdir -p {conf_dir}', raiseExceptionIfExitCodeNonZero=True)
+                DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=jupyter_config.encode(), dst=conf_file)
+                DockerLocal.execRunWrap(contObj, f'chown -R {containerUser}:{containerUser} {conf_dir}', raiseExceptionIfExitCodeNonZero=True)
+        except Exception as e:
+            print(f'Warning: Could not set Jupyter base_url: {e}')
 
     #Start up selected main apps (RStudio, Jupyter, Jupyterlab, and/or VScode) with supervisord
     runSupervisord = f'/usr/bin/supervisord -c /etc/supervisor/conf.d/{supervisord_conf_file_name}'
@@ -1578,6 +1969,49 @@ def start_container():
     enable_gpu = request.values.get('enable_gpu')
     envVarFile = request.values.get('envVarFile')
     startupScript = request.values.get('startupScript')
+
+    # Parse custom port mappings from dynamic form fields
+    custom_ports = {}
+    seen_internal = set()
+    seen_external = set()
+    idx = 0
+    while True:
+        int_key = f'custom_port_internal_{idx}'
+        ext_key = f'custom_port_external_{idx}'
+        if int_key not in request.values:
+            break
+        int_port = request.values.get(int_key, '').strip()
+        ext_port = request.values.get(ext_key, '').strip()
+        idx += 1
+        if not int_port:
+            continue
+        # Validate internal port
+        if not int_port.isdigit() or int(int_port) < 1 or int(int_port) > 65535:
+            flash(f'Custom port error: internal port "{int_port}" is not a valid port number.', "error")
+            return render_template('error.html')
+        if int_port in RESERVED_INTERNAL_PORTS:
+            flash(f'Custom port error: internal port {int_port} is reserved by Locker.', "error")
+            return render_template('error.html')
+        if int_port in seen_internal:
+            flash(f'Custom port error: duplicate internal port {int_port}.', "error")
+            return render_template('error.html')
+        seen_internal.add(int_port)
+        # Validate external port if specified
+        if ext_port:
+            if not ext_port.isdigit() or int(ext_port) < 1 or int(ext_port) > 65535:
+                flash(f'Custom port error: external port "{ext_port}" is not a valid port number.', "error")
+                return render_template('error.html')
+            if ext_port == str(hostLockerPort):
+                flash(f'Custom port error: external port {ext_port} is used by Locker itself.', "error")
+                return render_template('error.html')
+            if hostUsablePorts is not None and ext_port not in hostUsablePorts:
+                flash(f'Custom port error: external port {ext_port} is not in the allowed host port list.', "error")
+                return render_template('error.html')
+            if ext_port in seen_external:
+                flash(f'Custom port error: duplicate external port {ext_port}.', "error")
+                return render_template('error.html')
+            seen_external.add(ext_port)
+        custom_ports[int_port] = ext_port
 
     networkSshfsMounts = []
     localSshfsMounts = []
@@ -1642,7 +2076,7 @@ def start_container():
             repo_uri = repo_uri + ".git"
 
     try:
-        contObj = start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, envVarFile = envVarFile, startupScript = startupScript, repo_uri = repo_uri, repo_release = repo_release, other_labels = { '__LOCKER_WORKSPACE_CONTAINER__': 'True' })
+        contObj = start_containerFunc(image, main_app, container_name, vscode, networkSshfsMounts, localSshfsMounts, sibling_cont, enable_gpu, envVarFile = envVarFile, startupScript = startupScript, repo_uri = repo_uri, repo_release = repo_release, other_labels = { '__LOCKER_WORKSPACE_CONTAINER__': 'True' }, custom_ports = custom_ports)
     except Exception as e:
         fullMsg = utils.genShowHideMessage(f'Error in start_container',": Details: " + str(e),"start_containerErr1")
         flash(fullMsg, "error")

@@ -48,6 +48,14 @@
       </div>
     </div>
   </div>
+  <div class="panel panel-primary">
+    <div class="panel-heading">Custom Port Mappings (optional)</div>
+    <div class="panel-body">
+      <p class="help-block">Expose additional ports from the container. Internal port is required; external port is optional (Docker will auto-assign if blank). Custom ports will appear as clickable proxy links on the home page. Tip: Services must bind to 0.0.0.0 (not 127.0.0.1/localhost) to be accessible through the proxy (e.g. <code>flask run --host 0.0.0.0</code>).</p>
+      <div id="custom-ports-container"></div>
+      <button type="button" class="btn btn-sm btn-success" id="add-port-mapping"><span class="glyphicon glyphicon-plus"></span> Add Port Mapping</button>
+    </div>
+  </div>
   <div class="form-group" id="vscode_checkbox_group">
     <div class="checkbox">
       <label><input type="checkbox" name="vscode"> Also Start VSCode ?</label>
@@ -164,6 +172,111 @@ $( document ).ready(function() {
    });
 {% endif %}
 {% endfor %}
+
+   // Custom Port Mappings
+   var portRowIndex = 0;
+   var validateTimers = {};
+
+   function addPortRow() {
+     var idx = portRowIndex++;
+     var row = $(
+       '<div class="form-group port-mapping-row" data-idx="' + idx + '" style="margin-bottom:8px;">' +
+         '<div class="row">' +
+           '<div class="col-xs-4">' +
+             '<input type="text" class="form-control port-internal" name="custom_port_internal_' + idx + '" placeholder="Internal port (e.g. 3838)" />' +
+           '</div>' +
+           '<div class="col-xs-1" style="text-align:center;line-height:34px;padding:0;">&rarr;</div>' +
+           '<div class="col-xs-4">' +
+             '<input type="text" class="form-control port-external" name="custom_port_external_' + idx + '" placeholder="External port (optional)" />' +
+           '</div>' +
+           '<div class="col-xs-1">' +
+             '<button type="button" class="btn btn-sm btn-danger remove-port-row" style="margin-top:2px;"><span class="glyphicon glyphicon-minus"></span></button>' +
+           '</div>' +
+           '<div class="col-xs-2 port-validation-status" style="line-height:34px;"></div>' +
+         '</div>' +
+       '</div>'
+     );
+     row.find('.remove-port-row').click(function() {
+       row.remove();
+       // Re-validate remaining rows in case removing this one resolves a duplicate
+       $('.port-mapping-row').each(function() { validatePortRow($(this)); });
+     });
+     row.find('.port-internal, .port-external').on('blur keyup', function() {
+       var rowEl = $(this).closest('.port-mapping-row');
+       var rowIdx = rowEl.data('idx');
+       clearTimeout(validateTimers[rowIdx]);
+       validateTimers[rowIdx] = setTimeout(function() { validatePortRow(rowEl); }, 400);
+     });
+     $('#custom-ports-container').append(row);
+   }
+
+   function checkCrossRowDuplicates(rowEl) {
+     var intPort = rowEl.find('.port-internal').val().trim();
+     var extPort = rowEl.find('.port-external').val().trim();
+     var curIdx = rowEl.data('idx');
+
+     var rows = $('.port-mapping-row');
+     for (var i = 0; i < rows.length; i++) {
+       var otherRow = $(rows[i]);
+       if (otherRow.data('idx') === curIdx) continue;
+       var otherInt = otherRow.find('.port-internal').val().trim();
+       var otherExt = otherRow.find('.port-external').val().trim();
+       if (intPort && otherInt && intPort === otherInt) {
+         return 'Duplicate internal port (used in another row)';
+       }
+       if (extPort && otherExt && extPort === otherExt) {
+         return 'Duplicate external port (used in another row)';
+       }
+     }
+     return null;
+   }
+
+   function validatePortRow(rowEl) {
+     var intPort = rowEl.find('.port-internal').val().trim();
+     var extPort = rowEl.find('.port-external').val().trim();
+     var statusEl = rowEl.find('.port-validation-status');
+
+     if (!intPort && !extPort) {
+       statusEl.html('');
+       return;
+     }
+
+     // Client-side range check
+     if (intPort && (!/^\d+$/.test(intPort) || parseInt(intPort) < 1 || parseInt(intPort) > 65535)) {
+       statusEl.html('<span style="color:red;">Invalid internal port</span>');
+       return;
+     }
+     if (extPort && (!/^\d+$/.test(extPort) || parseInt(extPort) < 1 || parseInt(extPort) > 65535)) {
+       statusEl.html('<span style="color:red;">Invalid external port</span>');
+       return;
+     }
+
+     // Cross-row duplicate check
+     var dupError = checkCrossRowDuplicates(rowEl);
+     if (dupError) {
+       statusEl.html('<span style="color:red;">' + dupError + '</span>');
+       return;
+     }
+
+     statusEl.html('<span style="color:gray;">Checking...</span>');
+     $.ajax({
+       url: '/api/validate-port',
+       data: { internal_port: intPort, external_port: extPort },
+       dataType: 'json',
+       success: function(resp) {
+         if (resp.valid) {
+           statusEl.html('<span style="color:green;" class="glyphicon glyphicon-ok"></span>');
+         } else {
+           statusEl.html('<span style="color:red;">' + resp.error + '</span>');
+         }
+       },
+       error: function() {
+         statusEl.html('<span style="color:orange;">Could not validate</span>');
+       }
+     });
+   }
+
+   $('#add-port-mapping').click(function() { addPortRow(); });
 });
 
 

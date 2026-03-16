@@ -16,7 +16,7 @@ def locker_version() -> str:
     """
     Return the locker version
     """
-    return "v1.3.0"
+    return "v1.4.0"
 
 def empty(str):
     """
@@ -38,6 +38,24 @@ def valOrEmpty(str):
         return ""
     else:
         return str
+
+def validate_username(username):
+    """
+    Validate and normalize a username string.
+    Strips whitespace, lowercases, checks against allowed characters
+    (alphanumeric, underscore, dot, hyphen) and max 64 character length.
+    Returns the normalized username or raises ValueError if invalid.
+    """
+    if username is None:
+        raise ValueError("Username cannot be None")
+    username = username.strip().lower()
+    if username == "":
+        raise ValueError("Username cannot be empty")
+    if len(username) > 64:
+        raise ValueError(f"Username '{username}' exceeds 64 character limit")
+    if not re.match(r'^[a-zA-Z0-9_.\-]+$', username):
+        raise ValueError(f"Username '{username}' contains invalid characters (only alphanumeric, underscore, dot, hyphen allowed)")
+    return username
 
 def genShowHideMessage(alwaysShowTxt,initHideTxt,id):
     """
@@ -293,6 +311,18 @@ def get_my_global_host_or_ip():
 
     return host
 
+def isPortOpen(port, ip="127.0.0.1"):
+    """Return True if port can be bound to (nothing listening), False otherwise."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect((ip, int(port)))
+        s.shutdown(2)
+        return False
+    except Exception:
+        return True
+    finally:
+        s.close()
+
 def slurpFile(file):
     """
     Read an entire text file in and return it as a string.
@@ -376,3 +406,4 @@ def ping(host):
     FNULL = open(os.devnull, 'w')
 
     return subprocess.call(command, stdout=FNULL, stderr=subprocess.STDOUT) == 0
+

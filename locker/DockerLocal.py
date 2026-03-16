@@ -360,20 +360,20 @@ def runContainer(docker_client, image, ports=None, environment=None, entrypoint=
 
     return contObj
 
-def setupApacheProxy(contObj, filesFolder, allowedUsers=[], contStartupScriptTxt=""):
+def setupApacheProxy(contObj, filesFolder, fullAccessUsers=[], restrictedUsers=[], contStartupScriptTxt=""):
     """
-    For a started Docker container, setup the Apache SiteMinder
+    For a started Docker container, setup the Apache SSO
     proxy inside it (i.e. by copying in necessary conf, startup
-    files and the SiteMinderApache.pm mod_perl module, etc.) contObj
+    files and the SSOApache.pm mod_perl module, etc.) contObj
     is the docker-py container object. filesFolder is a dir on the host
-    where the various conf, startup files are stored. allowedUsers
-    is a list of usernames that will be allowed access to the
-    primary app and vscode (assuming they can SiteMinder
-    authenticate).
+    where the various conf, startup files are stored. fullAccessUsers
+    get unrestricted access; restrictedUsers can only access custom
+    port proxy URLs and the /authorized-ports landing page (assuming
+    they can SSO authenticate).
     """
 
     try:
-        #install mod_perl and other modules required for SiteMinderApache.pm, after doing apt-get update
+        #install mod_perl and other modules required for SSOApache.pm, after doing apt-get update
         cmd="/bin/bash -c 'apt-get update -y'"
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
         cmd="/bin/bash -c 'apt-get -y install apache2 libapache2-mod-perl2 libcache-fastmmap-perl libjson-perl'"
@@ -396,29 +396,35 @@ def setupApacheProxy(contObj, filesFolder, allowedUsers=[], contStartupScriptTxt
         cmd='cp /tmp/proxy_conf/startup.pl /perl_mods/startup.pl'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
-        cmd='cp /tmp/proxy_conf/SiteMinderApache.pm /perl_mods/SiteMinderApache.pm'
+        cmd='cp /tmp/proxy_conf/SSOApache.pm /perl_mods/SSOApache.pm'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
-        cmd='chmod u+w /perl_mods/SiteMinderApache.pm'
+        cmd='chmod u+w /perl_mods/SSOApache.pm'
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
         perlDataSectionContent = ""
-        if len(allowedUsers) > 0:
-            perlDataSectionContent = "\n".join(allowedUsers)
+        user_lines = []
+        for user in fullAccessUsers:
+            user_lines.append(f"{user}\tfull")
+        for user in restrictedUsers:
+            if user not in set(fullAccessUsers):
+                user_lines.append(f"{user}\trestricted")
+        if user_lines:
+            perlDataSectionContent = "\n".join(user_lines)
         perlDataSectionContent = perlDataSectionContent + "\n"
         perlDataSectionContent = perlDataSectionContent + "REDIRECT_URL\t" + config.redirect_url + "\n"
         perlDataSectionContent = perlDataSectionContent + "VALIDATE_URL\t" + config.validate_url + "\n"
         perlDataSectionContent = perlDataSectionContent + "SSO_SESSION_COOKIE_NAME\t" + config.SSO_SESSION_COOKIE_NAME + "\n"
         perlDataSectionContent = perlDataSectionContent + "REDIRECT_TARGET_ARGNAME\t" + config.REDIRECT_TARGET_ARGNAME + "\n"
         echoTxt = f'__DATA__\n{perlDataSectionContent}'
-        cmd=f'/bin/sh -c \'echo "{echoTxt}" >> /perl_mods/SiteMinderApache.pm\''
+        cmd=f'/bin/sh -c \'echo "{echoTxt}" >> /perl_mods/SSOApache.pm\''
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = True)
 
         #finally, start apache
         cmd="apachectl start"
         contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = False)
     except Exception as e:
-        raise Exception("Error setting up Apache SiteMinder proxy in DockerLocal.setupApacheProxy: " + str(e))
+        raise Exception("Error setting up Apache SSO proxy in DockerLocal.setupApacheProxy: " + str(e))
 
     return(contStartupScriptTxt)
 
