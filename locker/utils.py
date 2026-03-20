@@ -16,7 +16,7 @@ def locker_version() -> str:
     """
     Return the locker version
     """
-    return "v1.4.0"
+    return "v1.4.1"
 
 def empty(str):
     """
