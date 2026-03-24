@@ -392,6 +392,19 @@ def new_ec2_func(exec_exit=True):
    smuser = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
 
    if stage == 'exec':
+
+      # Check server limit
+      if smuser not in locker_config.ADMIN_USERNAME:
+         existing_instances = utils.getLockerInstances(creator=smuser)
+         non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+         max_servers = locker_config.MAX_SERVERS_PER_USER
+         if len(non_terminated) >= max_servers:
+            cgi_exit(
+               f"<b>Error</b>: You already have {len(non_terminated)} server(s) (limit is {max_servers}). "
+               f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one.",
+               config_btn='new_ec2_btn'
+            )
+
       try:
 
          #See here: https://stackoverflow.com/questions/23929235/multi-line-string-with-extra-space-preserved-indentation
@@ -724,6 +737,18 @@ def cgi_exit(errormsg,config_btn=''):
    template = env.get_template('res_mesg.html')
    config['msg'] = errormsg
    config['config_btn'] = config_btn
+   # Check server limit for tab display (non-admin users only)
+   smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
+      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+      max_servers = locker_config.MAX_SERVERS_PER_USER
+      if len(non_terminated) >= max_servers:
+         config['at_server_limit'] = True
+         config['server_limit_msg'] = (
+            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+         )
    output = template.render(config=config)
    utils.printHTML(output)
    sys.exit()
@@ -755,6 +780,20 @@ elif a == 'update_locker':
 elif a == 'edit_ec2_instance':
    (config,template) = edit_ec2_instance_func()
 
+
+if config is not None and template is not None:
+   # Check server limit for tab display (non-admin users only)
+   smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
+      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+      max_servers = locker_config.MAX_SERVERS_PER_USER
+      if len(non_terminated) >= max_servers:
+         config['at_server_limit'] = True
+         config['server_limit_msg'] = (
+            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+         )
 
 if template is not None:
    output = template.render(config=config)

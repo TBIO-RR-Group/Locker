@@ -86,6 +86,11 @@ locker_services:
     - 'i3.8xlarge'
     - 'm5n.24xlarge'
 
+  ## Maximum number of non-terminated EC2 servers a user can have at once.
+  ## Users at or above this limit will be blocked from creating new servers.
+  ## Admins (ADMIN_USERNAME) are exempt from this limit.
+  MAX_SERVERS_PER_USER: 3
+
   ## Extra tags that will be added to the tags of started EC2 instances
   ## as key-value pairs.
   ## Example:
