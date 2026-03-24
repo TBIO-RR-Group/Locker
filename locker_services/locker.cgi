@@ -127,6 +127,15 @@ if 'instance_ip' in arguments:
    instance_ip = arguments['instance_ip'].value
 if 'instance_hostname' in arguments:
    instance_hostname = arguments['instance_hostname'].value
+edit_ec2_instance_type = None
+edit_ec2_desc = None
+edit_root_disk_size = None
+if 'edit_ec2_instance_type' in arguments:
+   edit_ec2_instance_type = arguments['edit_ec2_instance_type'].value
+if 'edit_ec2_desc' in arguments:
+   edit_ec2_desc = arguments['edit_ec2_desc'].value
+if 'edit_root_disk_size' in arguments:
+   edit_root_disk_size = arguments['edit_root_disk_size'].value
 install_docker_flag = False
 if 'install_docker_cb' in arguments and arguments['install_docker_cb'].value == 'True':
    install_docker_flag = True
@@ -634,6 +643,83 @@ def update_locker_func():
    config['msg'] = f"<p>Please click <a onclick=\"if (confirm('Are you sure you want to update Locker on the instance?')) {{showSpinner(); window.location='locker.cgi?a=update_locker&stage=exec&instance_hostname={instance_hostname}&instance_ip={instance_ip}';}}\" href=\"#\">here</a> to update Locker on {instance_hostname} server with ip address {instance_ip}.</p>"
    return(config, template)
 
+def edit_ec2_instance_func():
+
+   config = {}
+   template = None
+   smuser = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+
+   if utils.empty(instance_id):
+      cgi_exit("<b>Error</b>: No instance_id provided.", config_btn='ec2_portal_btn')
+
+   details = utils.getEc2InstanceDetails(instance_id)
+   if not details['success']:
+      cgi_exit("<b>Error</b>: " + details['error_msg'], config_btn='ec2_portal_btn')
+
+   # Authorization check
+   creator_tag = details['tags'].get('Creator', '')
+   creators = [x.strip() for x in creator_tag.split(",")]
+   if smuser not in creators and smuser not in locker_config.ADMIN_USERNAME:
+      cgi_exit("<b>Error</b>: You are not authorized to edit this instance because you are not its creator (or an admin).", config_btn='ec2_portal_btn')
+
+   if stage == 'exec':
+      changes_made = []
+      current_desc = details['tags'].get('Description', '')
+      current_instance_type = details['instance_type']
+      current_root_disk_size = details['root_volume_size']
+
+      # Update description if changed
+      if edit_ec2_desc is not None and edit_ec2_desc != current_desc:
+         res = utils.updateEc2Tags(instance_id, [{'Key': 'Description', 'Value': edit_ec2_desc}])
+         if not res['success']:
+            cgi_exit("<b>Error</b> updating description: " + res['error_msg'], config_btn='ec2_portal_btn')
+         changes_made.append("Description updated")
+
+      # Update instance type if changed
+      if edit_ec2_instance_type is not None and not edit_ec2_instance_type.startswith(current_instance_type + ' ') and edit_ec2_instance_type != current_instance_type:
+         if details['state'] == 'running':
+            cgi_exit("<b>Error</b>: Instance must be stopped before changing instance type. Please <a href='locker.cgi?a=stop_ec2_instance&instance_id={}&instance_ip='>stop the instance</a> first.".format(instance_id), config_btn='ec2_portal_btn')
+         # Extract the instance type name (e.g. "m5.xlarge" from "m5.xlarge (4 cores - 16 GB RAM, $0.2/Hrs)")
+         new_type_name = edit_ec2_instance_type.split(' ')[0] if ' ' in edit_ec2_instance_type else edit_ec2_instance_type
+         res = utils.modifyEc2InstanceType(instance_id, new_type_name)
+         if not res['success']:
+            cgi_exit("<b>Error</b> changing instance type: " + res['error_msg'], config_btn='ec2_portal_btn')
+         # Update the InstanceTypeDescription tag
+         utils.updateEc2Tags(instance_id, [{'Key': 'InstanceTypeDescription', 'Value': edit_ec2_instance_type}])
+         changes_made.append("Instance type changed to " + new_type_name)
+
+      # Update storage if changed
+      if edit_root_disk_size is not None and current_root_disk_size is not None:
+         new_size = int(edit_root_disk_size)
+         if new_size < current_root_disk_size:
+            cgi_exit("<b>Error</b>: Root disk size can only be increased, not decreased. Current size is {} GB.".format(current_root_disk_size), config_btn='ec2_portal_btn')
+         if new_size > current_root_disk_size:
+            res = utils.modifyEc2VolumeSize(details['root_volume_id'], new_size)
+            if not res['success']:
+               cgi_exit("<b>Error</b> modifying volume size: " + res['error_msg'], config_btn='ec2_portal_btn')
+            changes_made.append("Root disk size changed to {} GB".format(new_size))
+
+      if changes_made:
+         msg = "<b>Success</b>: " + "; ".join(changes_made) + ".<br><a href='locker.cgi?a=ec2_portal'>Back to Server Portal</a>"
+      else:
+         msg = "No changes were made.<br><a href='locker.cgi?a=ec2_portal'>Back to Server Portal</a>"
+      cgi_exit(msg, config_btn='ec2_portal_btn')
+   else:
+      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      config = {
+         'instance_id': instance_id,
+         'instance_ip': details['tags'].get('Hostname', ''),
+         'instance_state': details['state'],
+         'current_instance_type': details['instance_type'],
+         'current_desc': details['tags'].get('Description', ''),
+         'current_root_disk_size': details['root_volume_size'] or 100,
+         'ec2_instance_types': ec2InstanceTypesArr,
+         'username': smuser
+      }
+      template = env.get_template('edit_ec2.html')
+
+   return(config, template)
+
 def cgi_exit(errormsg,config_btn=''):
    template = env.get_template('res_mesg.html')
    config['msg'] = errormsg
@@ -666,6 +752,8 @@ elif a == 'start_ec2_instance':
    (config,template) = start_ec2_instance_func()
 elif a == 'update_locker':
    (config,template) = update_locker_func()
+elif a == 'edit_ec2_instance':
+   (config,template) = edit_ec2_instance_func()
 
 
 if template is not None:

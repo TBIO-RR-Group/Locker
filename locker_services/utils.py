@@ -840,6 +840,75 @@ def startEc2(aws_region='us-east-1',root_disk_size=100,ec2_instance_type='t2.mic
 
     return(response,remoteHostname)
 
+def getEc2InstanceDetails(instanceId):
+    """Retrieves current instance state, type, tags, and root volume size."""
+    try:
+        ec2 = boto3.resource('ec2')
+        instance = ec2.Instance(instanceId)
+
+        state = instance.state['Name']
+        instance_type = instance.instance_type
+
+        tags = {}
+        if instance.tags:
+            for tag in instance.tags:
+                tags[tag['Key']] = tag['Value']
+
+        # Get root volume size (root device is /dev/xvda)
+        root_volume_id = None
+        root_volume_size = None
+        if instance.block_device_mappings:
+            for bdm in instance.block_device_mappings:
+                if bdm['DeviceName'] == '/dev/xvda':
+                    root_volume_id = bdm['Ebs']['VolumeId']
+                    volume = ec2.Volume(root_volume_id)
+                    root_volume_size = volume.size
+                    break
+
+        return {
+            'success': True,
+            'state': state,
+            'instance_type': instance_type,
+            'tags': tags,
+            'root_volume_id': root_volume_id,
+            'root_volume_size': root_volume_size
+        }
+    except Exception as e:
+        return {'success': False, 'error_msg': str(e)}
+
+def updateEc2Tags(instanceId, tags):
+    """Updates tags on an EC2 instance. tags is a list of {'Key': ..., 'Value': ...} dicts."""
+    try:
+        ec2 = boto3.resource('ec2')
+        ec2.create_tags(Resources=[instanceId], Tags=tags)
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error_msg': str(e)}
+
+def modifyEc2InstanceType(instanceId, newInstanceType):
+    """Modifies the instance type of a stopped EC2 instance."""
+    try:
+        client = boto3.client('ec2')
+        client.modify_instance_attribute(
+            InstanceId=instanceId,
+            InstanceType={'Value': newInstanceType}
+        )
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error_msg': str(e)}
+
+def modifyEc2VolumeSize(volumeId, newSizeGb):
+    """Modifies the size of an EBS volume. Size can only be increased. AWS enforces a 6h cooldown between modifications."""
+    try:
+        client = boto3.client('ec2')
+        client.modify_volume(
+            VolumeId=volumeId,
+            Size=int(newSizeGb)
+        )
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error_msg': str(e)}
+
 def sendMailSMUser(fromEmail,subj,msgHtml):
 
     http_smuser = os.environ.get(config.SERVER_USER_ENV_VAR_NAME)

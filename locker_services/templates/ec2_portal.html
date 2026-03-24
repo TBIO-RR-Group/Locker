@@ -101,16 +101,17 @@
         },
         "actions": function (column, row) {
           var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
+          var edit_link = "locker.cgi?a=edit_ec2_instance&instance_id=" + row.id
           if (row.state == 'running') {
             var stop_link = "locker.cgi?a=stop_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
-            return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
           }
           else if (row.state == 'stopped') {
             var start_link = "locker.cgi?a=start_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
-            return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + start_link + "'>Restart</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + start_link + "'>Restart</a>";
           }
           else if (row.state != 'terminated') {
-            return "<a href='" + terminate_link + "'>Terminate</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>";
           }
         },
         "open_connection": function (column, row) {
