@@ -136,6 +136,17 @@ if 'edit_ec2_desc' in arguments:
    edit_ec2_desc = arguments['edit_ec2_desc'].value
 if 'edit_root_disk_size' in arguments:
    edit_root_disk_size = arguments['edit_root_disk_size'].value
+instance_type_justification = None
+if 'instance_type_justification' in arguments:
+   instance_type_justification = arguments['instance_type_justification'].value
+   if utils.empty(instance_type_justification):
+      instance_type_justification = None
+instance_type_price = None
+if 'instance_type_price' in arguments:
+   try:
+      instance_type_price = float(arguments['instance_type_price'].value)
+   except (ValueError, TypeError):
+      instance_type_price = None
 install_docker_flag = False
 if 'install_docker_cb' in arguments and arguments['install_docker_cb'].value == 'True':
    install_docker_flag = True
@@ -163,6 +174,31 @@ template = None
 #From Eric Sison: AMI ID's change frequently due to patching or bug fixes, search by AMI Name to find the latest AMI id; AMI Name: Amazon Linux 2 AG GPU latest
 ami_name = locker_config.AMI_NAME
 ami_id = utils.getAMIIDFromName(ami_name, aws_region='us-east-1')
+
+def validate_justification_if_needed(price, justification, config_btn=''):
+   """If instance type price exceeds threshold, require justification."""
+   threshold = getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0)
+   if price is not None and price > threshold and (justification is None or justification.strip() == ''):
+      cgi_exit(
+         f"<b>Error</b>: Instance type costs ${price}/hr (threshold: ${threshold}/hr). "
+         f"A justification is required. Please go back and provide one.",
+         config_btn=config_btn
+      )
+
+def send_justification_email(smuser, instance_id, instance_type_str, justification, context='New'):
+   """Send email about large instance justification to the submitting user and admins."""
+   try:
+      html = (
+         f"<b>Large Instance Justification ({context})</b><br><br>"
+         f"<b>User:</b> {smuser}<br>"
+         f"<b>Instance ID:</b> {instance_id}<br>"
+         f"<b>Instance Type:</b> {instance_type_str}<br>"
+         f"<b>Justification:</b><br>{justification.strip()}"
+      )
+      utils.sendMailSMUser(locker_config.ADMIN_EMAIL_FROM,
+                           f'Large Instance Justification ({context}) - {instance_id}', html)
+   except:
+      pass
 
 def new_ec2_locker_func():
 
@@ -205,9 +241,10 @@ def new_ec2_locker_func():
       cgi_exit(startedFullMsg,config_btn='new_ec2_locker_btn')
    else:
       awsRegionsHash = utils.readJsonFile('aws_regions.json')
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
       config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME), 'devtest': devtest,
-                 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG, 'container_user': locker_config.CONTAINER_USER }
+                 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG, 'container_user': locker_config.CONTAINER_USER,
+                 'instance_type_prices': instTypePrices, 'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0) }
       template = env.get_template('new_ec2_locker.html')
 
    return(config, template)
@@ -405,6 +442,8 @@ def new_ec2_func(exec_exit=True):
                config_btn='new_ec2_btn'
             )
 
+      validate_justification_if_needed(instance_type_price, instance_type_justification, config_btn='new_ec2_btn')
+
       try:
 
          #See here: https://stackoverflow.com/questions/23929235/multi-line-string-with-extra-space-preserved-indentation
@@ -446,6 +485,13 @@ sudo mount -a
          username = locker_config.AMI_USER
          instanceid = resp['Instances'][0]['InstanceId']
 
+         if instance_type_justification is not None:
+            try:
+               utils.updateEc2Tags(instanceid, [{'Key': 'InstanceTypeJustification', 'Value': instance_type_justification.strip()}])
+            except:
+               pass
+            send_justification_email(smuser, instanceid, ec2_instance_type, instance_type_justification, context='New')
+
          remoteRes = utils.execRemoteCmd('bash',username,ip,sshprivkey=sshprivkey_docker_env_admin_key,stdinTxt=bashScriptTxt)
          lockerCgi = utils.getCGIScript()
          if not remoteRes['success']:
@@ -472,8 +518,9 @@ sudo mount -a
    else:
       awsRegionsHash = utils.readJsonFile('aws_regions.json')
 #      ec2InstanceTypesArr = utils.readJsonFile('ec2_instance_types.json')
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
-      config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': smuser, 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG }
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
+      config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': smuser, 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG,
+                 'instance_type_prices': instTypePrices, 'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0) }
       template = env.get_template('new_ec2.html')
 
    return(config, template)
@@ -498,7 +545,7 @@ def ec2_portal_func(exec_exit=True):
          inst = utils.getLockerInstances()
       else:
          inst = utils.getLockerInstances(creator=smuser)
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      ec2InstanceTypesArr,instTypeNameToDesc,_ = utils.getInstanceTypes(ami_id=ami_id)
       AWSTagsToHash(inst)
       if version_view == 'true':
          for currInst in inst:
@@ -690,6 +737,7 @@ def edit_ec2_instance_func():
 
       # Update instance type if changed
       if edit_ec2_instance_type is not None and not edit_ec2_instance_type.startswith(current_instance_type + ' ') and edit_ec2_instance_type != current_instance_type:
+         validate_justification_if_needed(instance_type_price, instance_type_justification, config_btn='ec2_portal_btn')
          if details['state'] == 'running':
             cgi_exit("<b>Error</b>: Instance must be stopped before changing instance type. Please <a href='locker.cgi?a=stop_ec2_instance&instance_id={}&instance_ip='>stop the instance</a> first.".format(instance_id), config_btn='ec2_portal_btn')
          # Extract the instance type name (e.g. "m5.xlarge" from "m5.xlarge (4 cores - 16 GB RAM, $0.2/Hrs)")
@@ -699,6 +747,9 @@ def edit_ec2_instance_func():
             cgi_exit("<b>Error</b> changing instance type: " + res['error_msg'], config_btn='ec2_portal_btn')
          # Update the InstanceTypeDescription tag
          utils.updateEc2Tags(instance_id, [{'Key': 'InstanceTypeDescription', 'Value': edit_ec2_instance_type}])
+         if instance_type_justification is not None:
+            utils.updateEc2Tags(instance_id, [{'Key': 'InstanceTypeJustification', 'Value': instance_type_justification.strip()}])
+            send_justification_email(smuser, instance_id, edit_ec2_instance_type, instance_type_justification, context='Edit')
          changes_made.append("Instance type changed to " + new_type_name)
 
       # Update storage if changed
@@ -718,7 +769,7 @@ def edit_ec2_instance_func():
          msg = "No changes were made.<br><a href='locker.cgi?a=ec2_portal'>Back to Server Portal</a>"
       cgi_exit(msg, config_btn='ec2_portal_btn')
    else:
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
       config = {
          'instance_id': instance_id,
          'instance_ip': details['tags'].get('Hostname', ''),
@@ -727,7 +778,9 @@ def edit_ec2_instance_func():
          'current_desc': details['tags'].get('Description', ''),
          'current_root_disk_size': details['root_volume_size'] or 100,
          'ec2_instance_types': ec2InstanceTypesArr,
-         'username': smuser
+         'username': smuser,
+         'instance_type_prices': instTypePrices,
+         'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0)
       }
       template = env.get_template('edit_ec2.html')
 

@@ -38,6 +38,17 @@
     </SELECT>
     {% endif %}
   </div>
+  <div class="form-group" id="justification_group" style="display:none;">
+    <label id="instance_type_justification_label" style="color:#cc0000;">
+      <span class="glyphicon glyphicon-exclamation-sign"></span>
+      This instance type costs more than ${{ config.large_instance_cost_threshold }}/hr.
+      Please provide a justification:
+    </label>
+    <textarea id="instance_type_justification" name="instance_type_justification"
+              class="form-control" rows="3"
+              placeholder="Explain why this instance type is needed..."></textarea>
+  </div>
+  <input type="hidden" name="instance_type_price" id="instance_type_price" value="" />
   <div class="form-group">
     <label id="edit_ec2_desc_label">Description:</label>
     <input type="text" class="form-control" name="edit_ec2_desc" id="edit_ec2_desc" value="{{ config.current_desc }}"></input>
@@ -56,6 +67,29 @@
 
 <script>
 
+var LARGE_INSTANCE_COST_THRESHOLD = {{ config.large_instance_cost_threshold }};
+var INSTANCE_TYPE_PRICES = {{ config.instance_type_prices | tojson }};
+var CURRENT_INSTANCE_TYPE = "{{ config.current_instance_type }}";
+
+function getInstanceTypeName(instTypeStr) {
+   return instTypeStr ? instTypeStr.split(' ')[0] : null;
+}
+
+function checkInstanceTypeJustification() {
+   var selectedVal = $('#edit_ec2_instance_type').val();
+   var typeName = getInstanceTypeName(selectedVal);
+   var isChanging = typeName !== CURRENT_INSTANCE_TYPE;
+   var price = (typeName && INSTANCE_TYPE_PRICES[typeName] !== undefined) ? INSTANCE_TYPE_PRICES[typeName] : null;
+   $('#instance_type_price').val(price !== null ? price : '');
+   if (isChanging && price !== null && price > LARGE_INSTANCE_COST_THRESHOLD) {
+      $('#justification_group').show();
+      $('#instance_type_justification').attr('required', 'required');
+   } else {
+      $('#justification_group').hide();
+      $('#instance_type_justification').removeAttr('required').val('');
+   }
+}
+
 $(document).ready(function(){
 
    $("a.root_disk_size_tooltipLink").tooltip();
@@ -63,6 +97,11 @@ $(document).ready(function(){
    setPageButton('ec2_portal_btn');
 
    $("#edit_ec2_instance_type").select2();
+
+   checkInstanceTypeJustification();
+   $('#edit_ec2_instance_type').on('change', function() {
+      checkInstanceTypeJustification();
+   });
 
    // Client-side validation: storage can only increase
    var currentSize = {{ config.current_root_disk_size }};

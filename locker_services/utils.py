@@ -548,7 +548,8 @@ def getInstanceTypes(ami_id=None):
     if cacheReadObj is not None:
         ret_instance_types = cacheReadObj[0]
         inst_type_name_to_desc = cacheReadObj[1]
-        return (ret_instance_types,inst_type_name_to_desc)
+        inst_type_name_to_price = cacheReadObj[2] if len(cacheReadObj) > 2 else {}
+        return (ret_instance_types,inst_type_name_to_desc,inst_type_name_to_price)
 
     checkCommonInstTypesList = config.EC2_COMMON_INST_TYPES
     checkCommonInstTypesSet = set(checkCommonInstTypesList)
@@ -557,6 +558,7 @@ def getInstanceTypes(ami_id=None):
     other_instance_types = []
     ret_instance_types = []
     inst_type_name_to_desc = {}
+    inst_type_name_to_price = {}
 
     (SubnetId,SecurityGroupId,KeyName) = getNewEc2Params()
 
@@ -582,6 +584,10 @@ def getInstanceTypes(ami_id=None):
                     instTypePrice = instTypePricingInfo['price']
                 if instTypePricingInfo is not None and 'unit' in instTypePricingInfo:
                     instTypePriceUnit = instTypePricingInfo['unit']
+            try:
+                inst_type_name_to_price[instTypeName] = float(instTypePrice)
+            except (ValueError, TypeError):
+                inst_type_name_to_price[instTypeName] = None
             defVirtCpus = curInstTypeRec["VCpuInfo"]["DefaultVCpus"]
             memory = int(curInstTypeRec["MemoryInfo"]["SizeInMiB"])
             if memory >= 1024:
@@ -602,10 +608,10 @@ def getInstanceTypes(ami_id=None):
             common_instance_types.append(common_instance_types_found[curInstType])
     ret_instance_types = ["---Commonly-Used-Types---"] + common_instance_types + ["---Other-Types---"] + other_instance_types
 
-    cacheWriteObj = [ret_instance_types,inst_type_name_to_desc]
+    cacheWriteObj = [ret_instance_types,inst_type_name_to_desc,inst_type_name_to_price]
     writeObjToJsonCacheFile(cacheWriteObj,instanceTypesCacheFileLoc)
 
-    return(ret_instance_types,inst_type_name_to_desc)
+    return(ret_instance_types,inst_type_name_to_desc,inst_type_name_to_price)
 
 def getLockerInstances(creator=None):
 

@@ -91,6 +91,10 @@ locker_services:
   ## Admins (ADMIN_USERNAME) are exempt from this limit.
   MAX_SERVERS_PER_USER: 3
 
+  ## Cost threshold (USD/hr) above which users must provide justification
+  ## for their instance type selection. Applies to all users including admins.
+  LARGE_INSTANCE_COST_THRESHOLD: 2.0
+
   ## Extra tags that will be added to the tags of started EC2 instances
   ## as key-value pairs.
   ## Example:
