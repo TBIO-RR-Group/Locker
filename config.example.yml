@@ -134,6 +134,33 @@ locker_services:
   ## value of 'ip' variable for it.
   IP_TO_HOSTNAME_JS: 'hostname = "ipaddress-" + ip.replace(/\./g,"_") + ".example.com";'
 
+  ## Optional support email address.
+  ## When set, a "Get help" button appears in the bottom-right corner.
+  ## Remove or comment out to disable.
+  # support_email: "support@example.com"
+
+  ## Optional Jira Issue Collector buttons.
+  ## Each entry adds a button in the bottom-right corner that opens a Jira issue collector dialog.
+  ## Remove or comment out to disable (zero footprint when absent).
+  ##
+  ## Fields per collector:
+  ##   jira_url:      Base URL of your Jira instance (no trailing slash)
+  ##   collector_id:  The Jira issue collector ID (from Jira admin)
+  ##   label:         Button text
+  ##   icon:          CSS icon class (Font Awesome 4.7 or Glyphicons, e.g. "fa fa-bug")
+  ##   color:         CSS background-color (hex or named)
+  # jira_collectors:
+  #   - jira_url: "https://jira.example.com"
+  #     collector_id: "abc12345"
+  #     label: "Request a Feature"
+  #     icon: "fa fa-lightbulb-o"
+  #     color: "#0E3754"
+  #   - jira_url: "https://jira.example.com"
+  #     collector_id: "def67890"
+  #     label: "Report a Bug"
+  #     icon: "fa fa-bug"
+  #     color: "#ED1D24"
+
 # Manage settings for Locker
 locker:
 

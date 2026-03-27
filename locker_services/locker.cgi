@@ -854,6 +854,13 @@ def cgi_exit(errormsg,config_btn=''):
             f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
             f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
          )
+   # Pass Jira issue collectors and support email config to template (if configured)
+   jira_collectors = getattr(locker_config, 'jira_collectors', None)
+   if jira_collectors:
+      config['jira_collectors'] = jira_collectors
+   support_email = getattr(locker_config, 'support_email', None)
+   if support_email:
+      config['support_email'] = support_email
    output = template.render(config=config)
    utils.printHTML(output)
    sys.exit()
@@ -899,6 +906,13 @@ if config is not None and template is not None:
             f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
             f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
          )
+   # Pass Jira issue collectors and support email config to template (if configured)
+   jira_collectors = getattr(locker_config, 'jira_collectors', None)
+   if jira_collectors:
+      config['jira_collectors'] = jira_collectors
+   support_email = getattr(locker_config, 'support_email', None)
+   if support_email:
+      config['support_email'] = support_email
 
 if template is not None:
    output = template.render(config=config)

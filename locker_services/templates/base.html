@@ -171,6 +171,29 @@
 </div>
 {% endif %}
 
+{% if config.jira_collectors | default([]) or config.support_email | default('') %}
+<style>
+.support-bar { position: fixed; bottom: 12px; right: 16px; display: flex; align-items: center; gap: 6px; z-index: 1040; }
+.support-bar-link { font-size: 14px; cursor: pointer; text-decoration: none; opacity: 0.8; }
+.support-bar-link:hover { opacity: 1.0; text-decoration: underline; }
+.support-bar-sep { color: #999; font-size: 14px; }
+</style>
+<div class="support-bar">
+{% for collector in config.jira_collectors | default([]) %}
+{% if not loop.first %}<span class="support-bar-sep">|</span>{% endif %}
+<a id="jira-collector-{{ collector.collector_id }}" href="#" class="support-bar-link"
+   style="color: {{ collector.color }};"><i class="{{ collector.icon }}"></i> {{ collector.label }}</a>
+{% endfor %}
+{% if config.jira_collectors | default([]) and config.support_email | default('') %}
+<span class="support-bar-sep">|</span>
+{% endif %}
+{% if config.support_email | default('') %}
+<a href="mailto:{{ config.support_email }}" class="support-bar-link"
+   style="color: #17a2b8;"><i class="fa fa-question-circle"></i> Get help</a>
+{% endif %}
+</div>
+{% endif %}
+
   <!-- Optional JavaScript -->
   <!-- jQuery first, then Bootstrap JS, then jQuery bootgrid -->
   <script src="/static/jquery-1.11.1.min.js"></script>
@@ -240,6 +263,31 @@ function toggleOtherOptions() {
 }
 </script>
 
+{% if config.jira_collectors | default([]) %}
+<script>
+{% for collector in config.jira_collectors %}
+jQuery.ajax({
+    url: "{{ collector.jira_url }}/plugins/servlet/issueCollectorBootstrap.js?collectorId={{ collector.collector_id }}&locale=en_US",
+    type: "get",
+    cache: true,
+    dataType: "script"
+});
+{% endfor %}
+
+window.ATL_JQ_PAGE_PROPS = $.extend(window.ATL_JQ_PAGE_PROPS, {
+{% for collector in config.jira_collectors %}
+    '{{ collector.collector_id }}': {
+        "triggerFunction": function(showCollectorDialog) {
+            jQuery("#jira-collector-{{ collector.collector_id }}").click(function(e) {
+                e.preventDefault();
+                showCollectorDialog();
+            });
+        }
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+});
+</script>
+{% endif %}
 
 </body>
 
