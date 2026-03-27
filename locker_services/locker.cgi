@@ -215,6 +215,9 @@ def new_ec2_locker_func():
    if stage == 'exec':
       (config,template) = new_ec2_func(exec_exit=False)
       startedEc2Msg = config['startedMsg']
+      ec2_instanceid = config['instanceid']
+      ec2_ip = config['ip']
+      ec2_remoteHostname = config['remoteHostname']
       server_username = config['instanceuser']
       hostname = config['remoteHostname']
       install_docker_flag = True
@@ -229,10 +232,23 @@ def new_ec2_locker_func():
       sshprivkey_locker = sshprivkey
       sshpubkey_locker = sshpubkey
       (config,template) = start_locker_image_func(exec_exit=False)
-      startedLockerMsg = config['startedLockerMsg']
-      startedLockerFullMsg = config['startedLockerFullMsg']
-      startedMsg = startedEc2Msg + "<br><br>" + startedLockerMsg
-      startedFullMsg = startedEc2Msg + "<br><br>" + startedLockerFullMsg
+      locker_remote_hostname = config['remote_hostname']
+      lockerCgi = utils.getCGIScript()
+      startedMsg = (
+         "<b>Your Locker server is ready!</b>"
+         "<br><br>"
+         "<b>Server:</b> {} ({})"
+         "<br>"
+         "<b>SSH:</b> {}@{}"
+         "<br><br>"
+         "<a href='https://{}' target='_blank'>Open Locker</a>"
+         " | "
+         "<a href='{}?a=ec2_portal'>Server Portal</a>"
+         " | "
+         "<a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>Terminate Server</a>"
+      ).format(ec2_remoteHostname, ec2_instanceid, locker_config.AMI_USER, ec2_ip,
+               locker_remote_hostname, lockerCgi, lockerCgi, ec2_instanceid, ec2_ip)
+      startedFullMsg = startedMsg + "<br><br>An email with these details has been sent to you."
       try:
          utils.sendMailSMUser(locker_config.ADMIN_EMAIL_FROM,'New EC2 started and Locker started on it',startedMsg)
       except:
@@ -401,8 +417,16 @@ def start_locker_image_func(exec_exit=True):
          json_formatted_res_str = json.dumps(startLocker_image_res, indent=2)
          cgi_exit("<b>Error</b>: failed starting Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='start_locker_image_btn')
 
-      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='https://{}'>here</a>.".format(remote_hostname)
-      startedLockerFullMsg = startedLockerMsg + "<br>You will also receive an email with this information."
+      startedLockerMsg = (
+         "<b>Locker is ready!</b>"
+         "<br><br>"
+         "Access your Locker at {}"
+         "<br><br>"
+         "<a href='https://{}' target='_blank'>Open Locker</a>"
+         " | "
+         "<a href='{}?a=ec2_portal'>Server Portal</a>"
+      ).format(remote_hostname, remote_hostname, utils.getCGIScript())
+      startedLockerFullMsg = startedLockerMsg + "<br><br>An email with these details has been sent to you."
 
       if exec_exit:
          try:
@@ -411,7 +435,7 @@ def start_locker_image_func(exec_exit=True):
             pass
          cgi_exit(startedLockerFullMsg,config_btn='start_locker_image_btn')
       else:
-         config = { 'startedLockerMsg': startedLockerMsg, 'startedLockerFullMsg': startedLockerFullMsg }
+         config = { 'startedLockerMsg': startedLockerMsg, 'startedLockerFullMsg': startedLockerFullMsg, 'remote_hostname': remote_hostname }
          return(config,None)
    else:
       template = env.get_template('start_locker_image.html')
@@ -500,8 +524,18 @@ sudo mount -a
             remoteRes = utils.execRemoteCmd('bash',username,ip,sshprivkey=sshprivkey_docker_env_admin_key,stdinTxt=bashScriptTxt2)
             if not remoteRes['success']:
                cgi_exit("<b>Error</b>: Failed adding user's priv key at remote server: " + remoteRes['error_msg'],config_btn="new_ec2_btn")
-         startedMsg = "Successfully started new EC2 with instance ID {}, access at {}@{} ({}).<br>Click <a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>here</a> to terminate this instance".format(instanceid, locker_config.AMI_USER, ip,remoteHostname,lockerCgi,instanceid,ip)
-         startedFullMsg = startedMsg + "<br>You will also receive an email with this information."
+         startedMsg = (
+            "<b>EC2 instance launched!</b>"
+            "<br><br>"
+            "<b>Server:</b> {} ({})"
+            "<br>"
+            "<b>SSH:</b> {}@{}"
+            "<br><br>"
+            "<a href='{}?a=ec2_portal'>Server Portal</a>"
+            " | "
+            "<a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>Terminate Server</a>"
+         ).format(remoteHostname, instanceid, locker_config.AMI_USER, ip, lockerCgi, lockerCgi, instanceid, ip)
+         startedFullMsg = startedMsg + "<br><br>An email with these details has been sent to you."
 
          if exec_exit:
             try:
