@@ -918,7 +918,6 @@ def sendMailSMUser(fromEmail,subj,msgHtml):
         http_smuser_email = queryLdapForUid(http_smuser)
         if http_smuser_email is not None:
             toList = [http_smuser_email] + toList
-
     sendMail(fromEmail,toList,subj,msgHtml)
     return
 
@@ -948,7 +947,7 @@ def sendMail(fromEmail,toList,subj,msgHtml):
     mail.ehlo()
     mail.starttls()
 
-    mail.sendmail(fromEmail, ",".join(toList), msg.as_string())
+    mail.sendmail(fromEmail, toList, msg.as_string())
     mail.quit()
 
 def sendMailWithTextAttachment(fromEmail,toList,subj,msgText,msgAttachTxt,attachFileName="attach.txt"):
@@ -975,7 +974,7 @@ def sendMailWithTextAttachment(fromEmail,toList,subj,msgText,msgAttachTxt,attach
     mail.ehlo()
     mail.starttls()
 
-    mail.sendmail(fromEmail, ",".join(toList), msg.as_string())
+    mail.sendmail(fromEmail, toList, msg.as_string())
     mail.quit()
 
 def ldapConnect():
