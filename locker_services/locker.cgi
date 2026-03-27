@@ -760,7 +760,25 @@ def edit_ec2_instance_func():
          if new_size > current_root_disk_size:
             res = utils.modifyEc2VolumeSize(details['root_volume_id'], new_size)
             if not res['success']:
-               cgi_exit("<b>Error</b> modifying volume size: " + res['error_msg'], config_btn='ec2_portal_btn')
+               error_msg = res['error_msg']
+               if 'IncorrectModificationState' in error_msg or 'OPTIMIZING' in error_msg:
+                  friendly = (
+                     "<b>Error modifying volume size</b>"
+                     "<br><br>"
+                     "This volume was recently resized and is still being optimized by AWS. "
+                     "AWS enforces a cooldown period (typically 6 hours) after each volume "
+                     "modification, during which no further size changes can be made."
+                     "<br><br>"
+                     "Please wait and try again later."
+                     "<br><br>"
+                     "<a style='cursor:pointer;' onclick='toggleShowHide(\"vol_error_details\");'>"
+                     "Show full error details <span id='vol_error_details_clickon'>&nbsp;+</span></a>"
+                     "<span style='display:none;' id='vol_error_details'>"
+                     "<br><br>" + error_msg +
+                     "</span>"
+                  )
+                  cgi_exit(friendly, config_btn='ec2_portal_btn')
+               cgi_exit("<b>Error</b> modifying volume size: " + error_msg, config_btn='ec2_portal_btn')
             changes_made.append("Root disk size changed to {} GB".format(new_size))
 
       if changes_made:
