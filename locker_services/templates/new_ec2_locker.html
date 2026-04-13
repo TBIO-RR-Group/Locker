@@ -34,6 +34,17 @@
       {% endfor %}
     </SELECT>
   </div>
+  <div class="form-group" id="justification_group" style="display:none;">
+    <label id="instance_type_justification_label" style="color:#cc0000;">
+      <span class="glyphicon glyphicon-exclamation-sign"></span>
+      This instance type costs more than ${{ config.large_instance_cost_threshold }}/hr.
+      Please provide a justification:
+    </label>
+    <textarea id="instance_type_justification" name="instance_type_justification"
+              class="form-control" rows="3"
+              placeholder="Explain why this instance type is needed..."></textarea>
+  </div>
+  <input type="hidden" name="instance_type_price" id="instance_type_price" value="" />
   <div class="form-group">
     <label id="config_ec2_desc_label">Description (i.e. an optional note to describe what you will use this server for):</label>
     <input type="text" class="form-control" name="config_ec2_desc" id="config_ec2_desc" value=""></input>
@@ -74,6 +85,27 @@
 
 <script>
 
+var LARGE_INSTANCE_COST_THRESHOLD = {{ config.large_instance_cost_threshold }};
+var INSTANCE_TYPE_PRICES = {{ config.instance_type_prices | tojson }};
+
+function getInstanceTypeName(instTypeStr) {
+   return instTypeStr ? instTypeStr.split(' ')[0] : null;
+}
+
+function checkInstanceTypeJustification() {
+   var selectedVal = $('#config_ec2_instance_type').val();
+   var typeName = getInstanceTypeName(selectedVal);
+   var price = (typeName && INSTANCE_TYPE_PRICES[typeName] !== undefined) ? INSTANCE_TYPE_PRICES[typeName] : null;
+   $('#instance_type_price').val(price !== null ? price : '');
+   if (price !== null && price > LARGE_INSTANCE_COST_THRESHOLD) {
+      $('#justification_group').show();
+      $('#instance_type_justification').attr('required', 'required');
+   } else {
+      $('#justification_group').hide();
+      $('#instance_type_justification').removeAttr('required').val('');
+   }
+}
+
 function isEmpty(property) {
       return (property === null || property.trim() === "" || typeof property === "undefined");
    }
@@ -89,6 +121,11 @@ $(document).ready(function(){
 
    $("#config_aws_region").select2();
    $("#config_ec2_instance_type").select2();
+
+   checkInstanceTypeJustification();
+   $('#config_ec2_instance_type').on('change', function() {
+      checkInstanceTypeJustification();
+   });
 
 });
 

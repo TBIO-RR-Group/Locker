@@ -86,7 +86,16 @@ locker_services:
     - 'i3.8xlarge'
     - 'm5n.24xlarge'
 
-  ## Extra tags that will be added to the tags of started EC2 instances
+  ## Maximum number of non-terminated EC2 servers a user can have at once.
+  ## Users at or above this limit will be blocked from creating new servers.
+  ## Admins (ADMIN_USERNAME) are exempt from this limit.
+  MAX_SERVERS_PER_USER: 3
+
+  ## Cost threshold (USD/hr) above which users must provide justification
+  ## for their instance type selection. Applies to all users including admins.
+  LARGE_INSTANCE_COST_THRESHOLD: 2.0
+
+  ## Extra tags that will be added to the tags of started EC2 instances and their EBS volumes
   ## as key-value pairs.
   ## Example:
   ##    EXTRA_TAGS:
@@ -124,6 +133,33 @@ locker_services:
   ## has predictable pattern based on IP. Must set value for 'hostname' variable and use
   ## value of 'ip' variable for it.
   IP_TO_HOSTNAME_JS: 'hostname = "ipaddress-" + ip.replace(/\./g,"_") + ".example.com";'
+
+  ## Optional support email address.
+  ## When set, a "Get help" button appears in the bottom-right corner.
+  ## Remove or comment out to disable.
+  # support_email: "support@example.com"
+
+  ## Optional Jira Issue Collector buttons.
+  ## Each entry adds a button in the bottom-right corner that opens a Jira issue collector dialog.
+  ## Remove or comment out to disable (zero footprint when absent).
+  ##
+  ## Fields per collector:
+  ##   jira_url:      Base URL of your Jira instance (no trailing slash)
+  ##   collector_id:  The Jira issue collector ID (from Jira admin)
+  ##   label:         Button text
+  ##   icon:          CSS icon class (Font Awesome 4.7 or Glyphicons, e.g. "fa fa-bug")
+  ##   color:         CSS background-color (hex or named)
+  # jira_collectors:
+  #   - jira_url: "https://jira.example.com"
+  #     collector_id: "abc12345"
+  #     label: "Request a Feature"
+  #     icon: "fa fa-lightbulb-o"
+  #     color: "#0E3754"
+  #   - jira_url: "https://jira.example.com"
+  #     collector_id: "def67890"
+  #     label: "Report a Bug"
+  #     icon: "fa fa-bug"
+  #     color: "#ED1D24"
 
 # Manage settings for Locker
 locker:

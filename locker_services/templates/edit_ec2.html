@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit EC2 Instance{% endblock %}
+
+{% block main %}
+
+<center><h3>Edit EC2 Instance {{ config.instance_id }}</h3></center>
+
+{% if config.instance_state == 'running' %}
+<div class="alert alert-warning">
+  <strong>Note:</strong> This instance is currently running. To change the instance type, you must first <a href="locker.cgi?a=stop_ec2_instance&instance_id={{ config.instance_id }}&instance_ip={{ config.instance_ip }}">stop the instance</a>.
+</div>
+{% endif %}
+
+<form action="locker.cgi" method=POST enctype="multipart/form-data" onsubmit="showSpinner();" id="edit_ec2_form">
+  <div class="form-group">
+    <label id="edit_ec2_instance_type_label">Instance Type:</label> (<a href="https://aws.amazon.com/ec2/instance-types/" target=_NEW>more details</a>)
+    {% if config.instance_state == 'running' %}
+    <SELECT class="form-control" name="edit_ec2_instance_type_disabled" id="edit_ec2_instance_type" disabled>
+      {% for instType in config.ec2_instance_types %}
+      {% if instType.startswith('---') %}
+      <OPTION value="{{instType}}" disabled>{{instType}}</option>
+      {% else %}
+      <OPTION value="{{instType}}" {{ 'selected' if instType.startswith(config.current_instance_type + ' ') or instType == config.current_instance_type else '' }}>{{instType}}</option>
+      {% endif %}
+      {% endfor %}
+    </SELECT>
+    <input type="hidden" name="edit_ec2_instance_type" value="{{ config.current_instance_type }}" />
+    {% else %}
+    <SELECT class="form-control" name="edit_ec2_instance_type" id="edit_ec2_instance_type">
+      {% for instType in config.ec2_instance_types %}
+      {% if instType.startswith('---') %}
+      <OPTION value="{{instType}}" disabled>{{instType}}</option>
+      {% else %}
+      <OPTION value="{{instType}}" {{ 'selected' if instType.startswith(config.current_instance_type + ' ') or instType == config.current_instance_type else '' }}>{{instType}}</option>
+      {% endif %}
+      {% endfor %}
+    </SELECT>
+    {% endif %}
+  </div>
+  <div class="form-group" id="justification_group" style="display:none;">
+    <label id="instance_type_justification_label" style="color:#cc0000;">
+      <span class="glyphicon glyphicon-exclamation-sign"></span>
+      This instance type costs more than ${{ config.large_instance_cost_threshold }}/hr.
+      Please provide a justification:
+    </label>
+    <textarea id="instance_type_justification" name="instance_type_justification"
+              class="form-control" rows="3"
+              placeholder="Explain why this instance type is needed..."></textarea>
+  </div>
+  <input type="hidden" name="instance_type_price" id="instance_type_price" value="" />
+  <div class="form-group">
+    <label id="edit_ec2_desc_label">Description:</label>
+    <input type="text" class="form-control" name="edit_ec2_desc" id="edit_ec2_desc" value="{{ config.current_desc }}"></input>
+  </div>
+  <div class="form-group">
+    <label id="edit_root_disk_size_label">Root Disk Size in GB:</label>
+    <a data-toggle="tooltip" class="root_disk_size_tooltipLink" title="Disk size can only be increased, not decreased. After a size change, AWS enforces a 6-hour cooldown before another modification can be made."><span class="glyphicon glyphicon-info-sign"></span></a>
+    <input type="number" min="{{ config.current_root_disk_size }}" max="1000" class="form-control" name="edit_root_disk_size" id="edit_root_disk_size" value="{{ config.current_root_disk_size }}"></input>
+  </div>
+  <input type="hidden" name="a" value="edit_ec2_instance" />
+  <input type="hidden" name="stage" value="exec" />
+  <input type="hidden" name="instance_id" value="{{ config.instance_id }}" />
+  <button type="submit" class="btn btn-default" name="save_changes" id="save_changes" value="set">Save Changes</button>
+  <a class="btn btn-default" href="locker.cgi?a=ec2_portal">Cancel</a>
+</form>
+
+<script>
+
+var LARGE_INSTANCE_COST_THRESHOLD = {{ config.large_instance_cost_threshold }};
+var INSTANCE_TYPE_PRICES = {{ config.instance_type_prices | tojson }};
+var CURRENT_INSTANCE_TYPE = "{{ config.current_instance_type }}";
+
+function getInstanceTypeName(instTypeStr) {
+   return instTypeStr ? instTypeStr.split(' ')[0] : null;
+}
+
+function checkInstanceTypeJustification() {
+   var selectedVal = $('#edit_ec2_instance_type').val();
+   var typeName = getInstanceTypeName(selectedVal);
+   var isChanging = typeName !== CURRENT_INSTANCE_TYPE;
+   var price = (typeName && INSTANCE_TYPE_PRICES[typeName] !== undefined) ? INSTANCE_TYPE_PRICES[typeName] : null;
+   $('#instance_type_price').val(price !== null ? price : '');
+   if (isChanging && price !== null && price > LARGE_INSTANCE_COST_THRESHOLD) {
+      $('#justification_group').show();
+      $('#instance_type_justification').attr('required', 'required');
+   } else {
+      $('#justification_group').hide();
+      $('#instance_type_justification').removeAttr('required').val('');
+   }
+}
+
+$(document).ready(function(){
+
+   $("a.root_disk_size_tooltipLink").tooltip();
+
+   setPageButton('ec2_portal_btn');
+
+   $("#edit_ec2_instance_type").select2();
+
+   checkInstanceTypeJustification();
+   $('#edit_ec2_instance_type').on('change', function() {
+      checkInstanceTypeJustification();
+   });
+
+   // Client-side validation: storage can only increase
+   var currentSize = {{ config.current_root_disk_size }};
+   $("#edit_ec2_form").on("submit", function(e) {
+      var newSize = parseInt($("#edit_root_disk_size").val());
+      if (newSize < currentSize) {
+         e.preventDefault();
+         alert("Root disk size can only be increased, not decreased. Current size is " + currentSize + " GB.");
+         return false;
+      }
+   });
+
+});
+
+</script>
+
+{% endblock %}

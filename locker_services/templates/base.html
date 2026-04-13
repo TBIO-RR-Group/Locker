@@ -146,8 +146,16 @@
       <!-- See here: https://stackoverflow.com/questions/12912048/how-to-maintain-aspect-ratio-using-html-img-tag -->
       <li><img class="locker_services_image" src="/static/logo_services.jpg" alt="Locker Services" style="max-width:64px;max-height:64px;width:auto;height:auto" onclick="document.location='locker.cgi';"></img></li>
       <li><a id="ec2_portal_btn" class="btn btn-primary" href="locker.cgi?a=ec2_portal">Locker Server Portal</a></li>&nbsp;&nbsp;
+      {% if config.at_server_limit | default(false) %}
+      <li style="cursor:not-allowed;"><a id="new_ec2_locker_btn" class="btn btn-primary disabled" title="Server limit reached">Locker on New Server</a></li>&nbsp;&nbsp;
+      {% else %}
       <li><a id="new_ec2_locker_btn" class="btn btn-primary" href="locker.cgi?a=new_ec2_locker">Locker on New Server</a></li>&nbsp;&nbsp;
+      {% endif %}
+      {% if config.at_server_limit | default(false) %}
+      <li style="cursor:not-allowed;"><a id="new_ec2_btn" style="display:none;" class="OTHER_OPTS btn btn-primary disabled" title="Server limit reached">New Server</a></li>&nbsp;&nbsp;
+      {% else %}
       <li><a id="new_ec2_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=new_ec2">New Server</a></li>&nbsp;&nbsp;
+      {% endif %}
       <li><a id="start_docker_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=start_docker">Check&sol;Start Docker</a></li>&nbsp;&nbsp;
       <li><a id="start_locker_image_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=start_locker_image">Start Locker</a></li>&nbsp;&nbsp;
       <li><a id="download_locker_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="/download/">Download Locker&sol;Docs</a></li>&nbsp;&nbsp;
@@ -155,6 +163,36 @@
     </ul>
   </div>
 </nav>
+
+{% if config.at_server_limit | default(false) %}
+<div class="alert alert-warning alert-dismissible" role="alert">
+  <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+  <b>Server limit reached:</b> {{ config.server_limit_msg | safe }}
+</div>
+{% endif %}
+
+{% if config.jira_collectors | default([]) or config.support_email | default('') %}
+<style>
+.support-bar { position: fixed; bottom: 12px; right: 16px; display: flex; align-items: center; gap: 6px; z-index: 1040; }
+.support-bar-link { font-size: 14px; cursor: pointer; text-decoration: none; opacity: 0.8; }
+.support-bar-link:hover { opacity: 1.0; text-decoration: underline; }
+.support-bar-sep { color: #999; font-size: 14px; }
+</style>
+<div class="support-bar">
+{% for collector in config.jira_collectors | default([]) %}
+{% if not loop.first %}<span class="support-bar-sep">|</span>{% endif %}
+<a id="jira-collector-{{ collector.collector_id }}" href="#" class="support-bar-link"
+   style="color: {{ collector.color }};"><i class="{{ collector.icon }}"></i> {{ collector.label }}</a>
+{% endfor %}
+{% if config.jira_collectors | default([]) and config.support_email | default('') %}
+<span class="support-bar-sep">|</span>
+{% endif %}
+{% if config.support_email | default('') %}
+<a href="mailto:{{ config.support_email }}" class="support-bar-link"
+   style="color: #17a2b8;"><i class="fa fa-question-circle"></i> Get help</a>
+{% endif %}
+</div>
+{% endif %}
 
   <!-- Optional JavaScript -->
   <!-- jQuery first, then Bootstrap JS, then jQuery bootgrid -->
@@ -225,6 +263,31 @@ function toggleOtherOptions() {
 }
 </script>
 
+{% if config.jira_collectors | default([]) %}
+<script>
+{% for collector in config.jira_collectors %}
+jQuery.ajax({
+    url: "{{ collector.jira_url }}/plugins/servlet/issueCollectorBootstrap.js?collectorId={{ collector.collector_id }}&locale=en_US",
+    type: "get",
+    cache: true,
+    dataType: "script"
+});
+{% endfor %}
+
+window.ATL_JQ_PAGE_PROPS = $.extend(window.ATL_JQ_PAGE_PROPS, {
+{% for collector in config.jira_collectors %}
+    '{{ collector.collector_id }}': {
+        "triggerFunction": function(showCollectorDialog) {
+            jQuery("#jira-collector-{{ collector.collector_id }}").click(function(e) {
+                e.preventDefault();
+                showCollectorDialog();
+            });
+        }
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+});
+</script>
+{% endif %}
 
 </body>
 

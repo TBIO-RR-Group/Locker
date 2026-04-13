@@ -127,6 +127,26 @@ if 'instance_ip' in arguments:
    instance_ip = arguments['instance_ip'].value
 if 'instance_hostname' in arguments:
    instance_hostname = arguments['instance_hostname'].value
+edit_ec2_instance_type = None
+edit_ec2_desc = None
+edit_root_disk_size = None
+if 'edit_ec2_instance_type' in arguments:
+   edit_ec2_instance_type = arguments['edit_ec2_instance_type'].value
+if 'edit_ec2_desc' in arguments:
+   edit_ec2_desc = arguments['edit_ec2_desc'].value
+if 'edit_root_disk_size' in arguments:
+   edit_root_disk_size = arguments['edit_root_disk_size'].value
+instance_type_justification = None
+if 'instance_type_justification' in arguments:
+   instance_type_justification = arguments['instance_type_justification'].value
+   if utils.empty(instance_type_justification):
+      instance_type_justification = None
+instance_type_price = None
+if 'instance_type_price' in arguments:
+   try:
+      instance_type_price = float(arguments['instance_type_price'].value)
+   except (ValueError, TypeError):
+      instance_type_price = None
 install_docker_flag = False
 if 'install_docker_cb' in arguments and arguments['install_docker_cb'].value == 'True':
    install_docker_flag = True
@@ -155,6 +175,31 @@ template = None
 ami_name = locker_config.AMI_NAME
 ami_id = utils.getAMIIDFromName(ami_name, aws_region='us-east-1')
 
+def validate_justification_if_needed(price, justification, config_btn=''):
+   """If instance type price exceeds threshold, require justification."""
+   threshold = getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0)
+   if price is not None and price > threshold and (justification is None or justification.strip() == ''):
+      cgi_exit(
+         f"<b>Error</b>: Instance type costs ${price}/hr (threshold: ${threshold}/hr). "
+         f"A justification is required. Please go back and provide one.",
+         config_btn=config_btn
+      )
+
+def send_justification_email(smuser, instance_id, instance_type_str, justification, context='New'):
+   """Send email about large instance justification to the submitting user and admins."""
+   try:
+      html = (
+         f"<b>Large Instance Justification ({context})</b><br><br>"
+         f"<b>User:</b> {smuser}<br>"
+         f"<b>Instance ID:</b> {instance_id}<br>"
+         f"<b>Instance Type:</b> {instance_type_str}<br>"
+         f"<b>Justification:</b><br>{justification.strip()}"
+      )
+      utils.sendMailSMUser(locker_config.ADMIN_EMAIL_FROM,
+                           f'Large Instance Justification ({context}) - {instance_id}', html)
+   except:
+      pass
+
 def new_ec2_locker_func():
 
    config = {}
@@ -170,6 +215,9 @@ def new_ec2_locker_func():
    if stage == 'exec':
       (config,template) = new_ec2_func(exec_exit=False)
       startedEc2Msg = config['startedMsg']
+      ec2_instanceid = config['instanceid']
+      ec2_ip = config['ip']
+      ec2_remoteHostname = config['remoteHostname']
       server_username = config['instanceuser']
       hostname = config['remoteHostname']
       install_docker_flag = True
@@ -184,10 +232,23 @@ def new_ec2_locker_func():
       sshprivkey_locker = sshprivkey
       sshpubkey_locker = sshpubkey
       (config,template) = start_locker_image_func(exec_exit=False)
-      startedLockerMsg = config['startedLockerMsg']
-      startedLockerFullMsg = config['startedLockerFullMsg']
-      startedMsg = startedEc2Msg + "<br><br>" + startedLockerMsg
-      startedFullMsg = startedEc2Msg + "<br><br>" + startedLockerFullMsg
+      locker_remote_hostname = config['remote_hostname']
+      lockerCgi = utils.getCGIScript()
+      startedMsg = (
+         "<b>Your Locker server is ready!</b>"
+         "<br><br>"
+         "<b>Server:</b> {} ({})"
+         "<br>"
+         "<b>SSH:</b> {}@{}"
+         "<br><br>"
+         "<a href='https://{}' target='_blank'>Open Locker</a>"
+         " | "
+         "<a href='{}?a=ec2_portal'>Server Portal</a>"
+         " | "
+         "<a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>Terminate Server</a>"
+      ).format(ec2_remoteHostname, ec2_instanceid, locker_config.AMI_USER, ec2_ip,
+               locker_remote_hostname, lockerCgi, lockerCgi, ec2_instanceid, ec2_ip)
+      startedFullMsg = startedMsg + "<br><br>An email with these details has been sent to you."
       try:
          utils.sendMailSMUser(locker_config.ADMIN_EMAIL_FROM,'New EC2 started and Locker started on it',startedMsg)
       except:
@@ -196,9 +257,10 @@ def new_ec2_locker_func():
       cgi_exit(startedFullMsg,config_btn='new_ec2_locker_btn')
    else:
       awsRegionsHash = utils.readJsonFile('aws_regions.json')
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
       config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME), 'devtest': devtest,
-                 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG, 'container_user': locker_config.CONTAINER_USER }
+                 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG, 'container_user': locker_config.CONTAINER_USER,
+                 'instance_type_prices': instTypePrices, 'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0) }
       template = env.get_template('new_ec2_locker.html')
 
    return(config, template)
@@ -355,8 +417,16 @@ def start_locker_image_func(exec_exit=True):
          json_formatted_res_str = json.dumps(startLocker_image_res, indent=2)
          cgi_exit("<b>Error</b>: failed starting Locker on remote server:<br><pre>" + json_formatted_res_str + "</pre>",config_btn='start_locker_image_btn')
 
-      startedLockerMsg = "<b>Success</b>: Locker was started on the remote server, access it <a href='https://{}'>here</a>.".format(remote_hostname)
-      startedLockerFullMsg = startedLockerMsg + "<br>You will also receive an email with this information."
+      startedLockerMsg = (
+         "<b>Locker is ready!</b>"
+         "<br><br>"
+         "Access your Locker at {}"
+         "<br><br>"
+         "<a href='https://{}' target='_blank'>Open Locker</a>"
+         " | "
+         "<a href='{}?a=ec2_portal'>Server Portal</a>"
+      ).format(remote_hostname, remote_hostname, utils.getCGIScript())
+      startedLockerFullMsg = startedLockerMsg + "<br><br>An email with these details has been sent to you."
 
       if exec_exit:
          try:
@@ -365,7 +435,7 @@ def start_locker_image_func(exec_exit=True):
             pass
          cgi_exit(startedLockerFullMsg,config_btn='start_locker_image_btn')
       else:
-         config = { 'startedLockerMsg': startedLockerMsg, 'startedLockerFullMsg': startedLockerFullMsg }
+         config = { 'startedLockerMsg': startedLockerMsg, 'startedLockerFullMsg': startedLockerFullMsg, 'remote_hostname': remote_hostname }
          return(config,None)
    else:
       template = env.get_template('start_locker_image.html')
@@ -383,6 +453,21 @@ def new_ec2_func(exec_exit=True):
    smuser = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
 
    if stage == 'exec':
+
+      # Check server limit
+      if smuser not in locker_config.ADMIN_USERNAME:
+         existing_instances = utils.getLockerInstances(creator=smuser)
+         non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+         max_servers = locker_config.MAX_SERVERS_PER_USER
+         if len(non_terminated) >= max_servers:
+            cgi_exit(
+               f"<b>Error</b>: You already have {len(non_terminated)} server(s) (limit is {max_servers}). "
+               f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one.",
+               config_btn='new_ec2_btn'
+            )
+
+      validate_justification_if_needed(instance_type_price, instance_type_justification, config_btn='new_ec2_btn')
+
       try:
 
          #See here: https://stackoverflow.com/questions/23929235/multi-line-string-with-extra-space-preserved-indentation
@@ -424,6 +509,13 @@ sudo mount -a
          username = locker_config.AMI_USER
          instanceid = resp['Instances'][0]['InstanceId']
 
+         if instance_type_justification is not None:
+            try:
+               utils.updateEc2Tags(instanceid, [{'Key': 'InstanceTypeJustification', 'Value': instance_type_justification.strip()}])
+            except:
+               pass
+            send_justification_email(smuser, instanceid, ec2_instance_type, instance_type_justification, context='New')
+
          remoteRes = utils.execRemoteCmd('bash',username,ip,sshprivkey=sshprivkey_docker_env_admin_key,stdinTxt=bashScriptTxt)
          lockerCgi = utils.getCGIScript()
          if not remoteRes['success']:
@@ -432,8 +524,18 @@ sudo mount -a
             remoteRes = utils.execRemoteCmd('bash',username,ip,sshprivkey=sshprivkey_docker_env_admin_key,stdinTxt=bashScriptTxt2)
             if not remoteRes['success']:
                cgi_exit("<b>Error</b>: Failed adding user's priv key at remote server: " + remoteRes['error_msg'],config_btn="new_ec2_btn")
-         startedMsg = "Successfully started new EC2 with instance ID {}, access at {}@{} ({}).<br>Click <a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>here</a> to terminate this instance".format(instanceid, locker_config.AMI_USER, ip,remoteHostname,lockerCgi,instanceid,ip)
-         startedFullMsg = startedMsg + "<br>You will also receive an email with this information."
+         startedMsg = (
+            "<b>EC2 instance launched!</b>"
+            "<br><br>"
+            "<b>Server:</b> {} ({})"
+            "<br>"
+            "<b>SSH:</b> {}@{}"
+            "<br><br>"
+            "<a href='{}?a=ec2_portal'>Server Portal</a>"
+            " | "
+            "<a href='{}?a=terminate_ec2_instance&instance_id={}&instance_ip={}'>Terminate Server</a>"
+         ).format(remoteHostname, instanceid, locker_config.AMI_USER, ip, lockerCgi, lockerCgi, instanceid, ip)
+         startedFullMsg = startedMsg + "<br><br>An email with these details has been sent to you."
 
          if exec_exit:
             try:
@@ -450,8 +552,9 @@ sudo mount -a
    else:
       awsRegionsHash = utils.readJsonFile('aws_regions.json')
 #      ec2InstanceTypesArr = utils.readJsonFile('ec2_instance_types.json')
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
-      config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': smuser, 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG }
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
+      config = { 'aws_regions': awsRegionsHash, 'ec2_instance_types': ec2InstanceTypesArr, 'username': smuser, 'mount_network_homedir': locker_config.MOUNT_NETWORK_HOMEDIR_FLAG,
+                 'instance_type_prices': instTypePrices, 'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0) }
       template = env.get_template('new_ec2.html')
 
    return(config, template)
@@ -476,7 +579,7 @@ def ec2_portal_func(exec_exit=True):
          inst = utils.getLockerInstances()
       else:
          inst = utils.getLockerInstances(creator=smuser)
-      ec2InstanceTypesArr,instTypeNameToDesc = utils.getInstanceTypes(ami_id=ami_id)
+      ec2InstanceTypesArr,instTypeNameToDesc,_ = utils.getInstanceTypes(ami_id=ami_id)
       AWSTagsToHash(inst)
       if version_view == 'true':
          for currInst in inst:
@@ -634,10 +737,130 @@ def update_locker_func():
    config['msg'] = f"<p>Please click <a onclick=\"if (confirm('Are you sure you want to update Locker on the instance?')) {{showSpinner(); window.location='locker.cgi?a=update_locker&stage=exec&instance_hostname={instance_hostname}&instance_ip={instance_ip}';}}\" href=\"#\">here</a> to update Locker on {instance_hostname} server with ip address {instance_ip}.</p>"
    return(config, template)
 
+def edit_ec2_instance_func():
+
+   config = {}
+   template = None
+   smuser = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+
+   if utils.empty(instance_id):
+      cgi_exit("<b>Error</b>: No instance_id provided.", config_btn='ec2_portal_btn')
+
+   details = utils.getEc2InstanceDetails(instance_id)
+   if not details['success']:
+      cgi_exit("<b>Error</b>: " + details['error_msg'], config_btn='ec2_portal_btn')
+
+   # Authorization check
+   creator_tag = details['tags'].get('Creator', '')
+   creators = [x.strip() for x in creator_tag.split(",")]
+   if smuser not in creators and smuser not in locker_config.ADMIN_USERNAME:
+      cgi_exit("<b>Error</b>: You are not authorized to edit this instance because you are not its creator (or an admin).", config_btn='ec2_portal_btn')
+
+   if stage == 'exec':
+      changes_made = []
+      current_desc = details['tags'].get('Description', '')
+      current_instance_type = details['instance_type']
+      current_root_disk_size = details['root_volume_size']
+
+      # Update description if changed
+      if edit_ec2_desc is not None and edit_ec2_desc != current_desc:
+         res = utils.updateEc2Tags(instance_id, [{'Key': 'Description', 'Value': edit_ec2_desc}])
+         if not res['success']:
+            cgi_exit("<b>Error</b> updating description: " + res['error_msg'], config_btn='ec2_portal_btn')
+         changes_made.append("Description updated")
+
+      # Update instance type if changed
+      if edit_ec2_instance_type is not None and not edit_ec2_instance_type.startswith(current_instance_type + ' ') and edit_ec2_instance_type != current_instance_type:
+         validate_justification_if_needed(instance_type_price, instance_type_justification, config_btn='ec2_portal_btn')
+         if details['state'] == 'running':
+            cgi_exit("<b>Error</b>: Instance must be stopped before changing instance type. Please <a href='locker.cgi?a=stop_ec2_instance&instance_id={}&instance_ip='>stop the instance</a> first.".format(instance_id), config_btn='ec2_portal_btn')
+         # Extract the instance type name (e.g. "m5.xlarge" from "m5.xlarge (4 cores - 16 GB RAM, $0.2/Hrs)")
+         new_type_name = edit_ec2_instance_type.split(' ')[0] if ' ' in edit_ec2_instance_type else edit_ec2_instance_type
+         res = utils.modifyEc2InstanceType(instance_id, new_type_name)
+         if not res['success']:
+            cgi_exit("<b>Error</b> changing instance type: " + res['error_msg'], config_btn='ec2_portal_btn')
+         # Update the InstanceTypeDescription tag
+         utils.updateEc2Tags(instance_id, [{'Key': 'InstanceTypeDescription', 'Value': edit_ec2_instance_type}])
+         if instance_type_justification is not None:
+            utils.updateEc2Tags(instance_id, [{'Key': 'InstanceTypeJustification', 'Value': instance_type_justification.strip()}])
+            send_justification_email(smuser, instance_id, edit_ec2_instance_type, instance_type_justification, context='Edit')
+         changes_made.append("Instance type changed to " + new_type_name)
+
+      # Update storage if changed
+      if edit_root_disk_size is not None and current_root_disk_size is not None:
+         new_size = int(edit_root_disk_size)
+         if new_size < current_root_disk_size:
+            cgi_exit("<b>Error</b>: Root disk size can only be increased, not decreased. Current size is {} GB.".format(current_root_disk_size), config_btn='ec2_portal_btn')
+         if new_size > current_root_disk_size:
+            res = utils.modifyEc2VolumeSize(details['root_volume_id'], new_size)
+            if not res['success']:
+               error_msg = res['error_msg']
+               if 'IncorrectModificationState' in error_msg or 'OPTIMIZING' in error_msg:
+                  friendly = (
+                     "<b>Error modifying volume size</b>"
+                     "<br><br>"
+                     "This volume was recently resized and is still being optimized by AWS. "
+                     "AWS enforces a cooldown period (typically 6 hours) after each volume "
+                     "modification, during which no further size changes can be made."
+                     "<br><br>"
+                     "Please wait and try again later."
+                     "<br><br>"
+                     "<a style='cursor:pointer;' onclick='toggleShowHide(\"vol_error_details\");'>"
+                     "Show full error details <span id='vol_error_details_clickon'>&nbsp;+</span></a>"
+                     "<span style='display:none;' id='vol_error_details'>"
+                     "<br><br>" + error_msg +
+                     "</span>"
+                  )
+                  cgi_exit(friendly, config_btn='ec2_portal_btn')
+               cgi_exit("<b>Error</b> modifying volume size: " + error_msg, config_btn='ec2_portal_btn')
+            changes_made.append("Root disk size changed to {} GB".format(new_size))
+
+      if changes_made:
+         msg = "<b>Success</b>: " + "; ".join(changes_made) + ".<br><a href='locker.cgi?a=ec2_portal'>Back to Server Portal</a>"
+      else:
+         msg = "No changes were made.<br><a href='locker.cgi?a=ec2_portal'>Back to Server Portal</a>"
+      cgi_exit(msg, config_btn='ec2_portal_btn')
+   else:
+      ec2InstanceTypesArr,instTypeNameToDesc,instTypePrices = utils.getInstanceTypes(ami_id=ami_id)
+      config = {
+         'instance_id': instance_id,
+         'instance_ip': details['tags'].get('Hostname', ''),
+         'instance_state': details['state'],
+         'current_instance_type': details['instance_type'],
+         'current_desc': details['tags'].get('Description', ''),
+         'current_root_disk_size': details['root_volume_size'] or 100,
+         'ec2_instance_types': ec2InstanceTypesArr,
+         'username': smuser,
+         'instance_type_prices': instTypePrices,
+         'large_instance_cost_threshold': getattr(locker_config, 'LARGE_INSTANCE_COST_THRESHOLD', 2.0)
+      }
+      template = env.get_template('edit_ec2.html')
+
+   return(config, template)
+
 def cgi_exit(errormsg,config_btn=''):
    template = env.get_template('res_mesg.html')
    config['msg'] = errormsg
    config['config_btn'] = config_btn
+   # Check server limit for tab display (non-admin users only)
+   smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
+      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+      max_servers = locker_config.MAX_SERVERS_PER_USER
+      if len(non_terminated) >= max_servers:
+         config['at_server_limit'] = True
+         config['server_limit_msg'] = (
+            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+         )
+   # Pass Jira issue collectors and support email config to template (if configured)
+   jira_collectors = getattr(locker_config, 'jira_collectors', None)
+   if jira_collectors:
+      config['jira_collectors'] = jira_collectors
+   support_email = getattr(locker_config, 'support_email', None)
+   if support_email:
+      config['support_email'] = support_email
    output = template.render(config=config)
    utils.printHTML(output)
    sys.exit()
@@ -666,7 +889,30 @@ elif a == 'start_ec2_instance':
    (config,template) = start_ec2_instance_func()
 elif a == 'update_locker':
    (config,template) = update_locker_func()
+elif a == 'edit_ec2_instance':
+   (config,template) = edit_ec2_instance_func()
 
+
+if config is not None and template is not None:
+   # Check server limit for tab display (non-admin users only)
+   smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
+   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
+      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+      max_servers = locker_config.MAX_SERVERS_PER_USER
+      if len(non_terminated) >= max_servers:
+         config['at_server_limit'] = True
+         config['server_limit_msg'] = (
+            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+         )
+   # Pass Jira issue collectors and support email config to template (if configured)
+   jira_collectors = getattr(locker_config, 'jira_collectors', None)
+   if jira_collectors:
+      config['jira_collectors'] = jira_collectors
+   support_email = getattr(locker_config, 'support_email', None)
+   if support_email:
+      config['support_email'] = support_email
 
 if template is not None:
    output = template.render(config=config)

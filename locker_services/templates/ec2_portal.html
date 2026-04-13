@@ -101,16 +101,17 @@
         },
         "actions": function (column, row) {
           var terminate_link = "locker.cgi?a=terminate_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
+          var edit_link = "locker.cgi?a=edit_ec2_instance&instance_id=" + row.id
           if (row.state == 'running') {
             var stop_link = "locker.cgi?a=stop_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
-            return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + stop_link + "'>Stop</a>";
           }
           else if (row.state == 'stopped') {
             var start_link = "locker.cgi?a=start_ec2_instance&instance_id=" + row.id + "&instance_ip=" + encodeURIComponent(row.ip)
-            return "<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + start_link + "'>Restart</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>&nbsp;|&nbsp;<a href='" + start_link + "'>Restart</a>";
           }
           else if (row.state != 'terminated') {
-            return "<a href='" + terminate_link + "'>Terminate</a>";
+            return "<a href='" + edit_link + "'>Edit</a>&nbsp;|&nbsp;<a href='" + terminate_link + "'>Terminate</a>";
           }
         },
         "open_connection": function (column, row) {
@@ -122,7 +123,7 @@
             }
             var locker_link = "https://" + hostname;
             var ssh_link = "ssh://{{ config.ami_user }}@" + row.ip;
-            return "<a href='" + locker_link + "'>Locker</a>&nbsp;|&nbsp;<a title='Note that this SSH link will only work on Mac/Linux and not on Windows. On Windows you will need to configure an SSH client such as PuTTY to SSH to the server at: {{ config.ami_user }}@" + row.ip + " and use your specified SSH private key (password login not supported).' href='" + ssh_link + "'>SSH</a>";
+            return "<a href='" + locker_link + "' target='_blank'>Locker</a>&nbsp;|&nbsp;<a title='Note that this SSH link will only work on Mac/Linux and not on Windows. On Windows you will need to configure an SSH client such as PuTTY to SSH to the server at: {{ config.ami_user }}@" + row.ip + " and use your specified SSH private key (password login not supported).' href='" + ssh_link + "' target='_blank'>SSH</a>";
           }
           else {
             return "&nbsp;"
