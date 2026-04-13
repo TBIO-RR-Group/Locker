@@ -77,6 +77,16 @@
     <label><input type="checkbox" name="ecr" {{ config.ecr }}> Pull from ECR? (requires AWS credentials)</label>
   </div>
   </span>
+  {% if config.at_server_limit | default(false) and config.is_admin | default(false) %}
+  <div class="form-group">
+    <div class="alert alert-warning">
+      <label>
+        <input type="checkbox" name="override_server_limit" value="1" required>
+        You have reached the server limit. As an admin, check this box to override the limit and create a new server.
+      </label>
+    </div>
+  </div>
+  {% endif %}
   <button type="submit" class="btn btn-default" name="start_ec2_locker" id="start_ec2_locker" value="set">Start Locker on New Server</button>
   <input type="hidden" name="a" value="new_ec2_locker" />
   <input type="hidden" name="stage" value="exec" />

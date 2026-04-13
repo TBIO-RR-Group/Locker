@@ -146,12 +146,12 @@
       <!-- See here: https://stackoverflow.com/questions/12912048/how-to-maintain-aspect-ratio-using-html-img-tag -->
       <li><img class="locker_services_image" src="/static/logo_services.jpg" alt="Locker Services" style="max-width:64px;max-height:64px;width:auto;height:auto" onclick="document.location='locker.cgi';"></img></li>
       <li><a id="ec2_portal_btn" class="btn btn-primary" href="locker.cgi?a=ec2_portal">Locker Server Portal</a></li>&nbsp;&nbsp;
-      {% if config.at_server_limit | default(false) %}
+      {% if config.at_server_limit | default(false) and not config.is_admin | default(false) %}
       <li style="cursor:not-allowed;"><a id="new_ec2_locker_btn" class="btn btn-primary disabled" title="Server limit reached">Locker on New Server</a></li>&nbsp;&nbsp;
       {% else %}
       <li><a id="new_ec2_locker_btn" class="btn btn-primary" href="locker.cgi?a=new_ec2_locker">Locker on New Server</a></li>&nbsp;&nbsp;
       {% endif %}
-      {% if config.at_server_limit | default(false) %}
+      {% if config.at_server_limit | default(false) and not config.is_admin | default(false) %}
       <li style="cursor:not-allowed;"><a id="new_ec2_btn" style="display:none;" class="OTHER_OPTS btn btn-primary disabled" title="Server limit reached">New Server</a></li>&nbsp;&nbsp;
       {% else %}
       <li><a id="new_ec2_btn" style="display:none;" class="OTHER_OPTS btn btn-primary" href="locker.cgi?a=new_ec2">New Server</a></li>&nbsp;&nbsp;
@@ -168,6 +168,9 @@
 <div class="alert alert-warning alert-dismissible" role="alert">
   <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
   <b>Server limit reached:</b> {{ config.server_limit_msg | safe }}
+  {% if config.is_admin | default(false) %}
+  <br>As an admin, you can override this limit when creating a new server.
+  {% endif %}
 </div>
 {% endif %}
 
