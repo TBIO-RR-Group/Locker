@@ -455,11 +455,19 @@ def new_ec2_func(exec_exit=True):
    if stage == 'exec':
 
       # Check server limit
-      if smuser not in locker_config.ADMIN_USERNAME:
-         existing_instances = utils.getLockerInstances(creator=smuser)
-         non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
-         max_servers = locker_config.MAX_SERVERS_PER_USER
-         if len(non_terminated) >= max_servers:
+      existing_instances = utils.getLockerInstances(creator=smuser)
+      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+      max_servers = locker_config.MAX_SERVERS_PER_USER
+      if len(non_terminated) >= max_servers:
+         if smuser in locker_config.ADMIN_USERNAME:
+            override = arguments.getvalue('override_server_limit')
+            if not override:
+               cgi_exit(
+                  f"<b>Error</b>: You already have {len(non_terminated)} server(s) (limit is {max_servers}). "
+                  f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> or use the admin override checkbox before creating a new one.",
+                  config_btn='new_ec2_btn'
+               )
+         else:
             cgi_exit(
                f"<b>Error</b>: You already have {len(non_terminated)} server(s) (limit is {max_servers}). "
                f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one.",
@@ -842,18 +850,19 @@ def cgi_exit(errormsg,config_btn=''):
    template = env.get_template('res_mesg.html')
    config['msg'] = errormsg
    config['config_btn'] = config_btn
-   # Check server limit for tab display (non-admin users only)
+   # Check server limit for tab display
    smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
-   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
-      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
-      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
-      max_servers = locker_config.MAX_SERVERS_PER_USER
-      if len(non_terminated) >= max_servers:
-         config['at_server_limit'] = True
-         config['server_limit_msg'] = (
-            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
-            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
-         )
+   is_admin = smuser_limit_check in locker_config.ADMIN_USERNAME
+   config['is_admin'] = is_admin
+   existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+   non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+   max_servers = locker_config.MAX_SERVERS_PER_USER
+   if len(non_terminated) >= max_servers:
+      config['at_server_limit'] = True
+      config['server_limit_msg'] = (
+         f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+         f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+      )
    # Pass Jira issue collectors and support email config to template (if configured)
    jira_collectors = getattr(locker_config, 'jira_collectors', None)
    if jira_collectors:
@@ -894,18 +903,19 @@ elif a == 'edit_ec2_instance':
 
 
 if config is not None and template is not None:
-   # Check server limit for tab display (non-admin users only)
+   # Check server limit for tab display
    smuser_limit_check = utils.getEnvVar(locker_config.SERVER_USER_ENV_VAR_NAME)
-   if smuser_limit_check not in locker_config.ADMIN_USERNAME:
-      existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
-      non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
-      max_servers = locker_config.MAX_SERVERS_PER_USER
-      if len(non_terminated) >= max_servers:
-         config['at_server_limit'] = True
-         config['server_limit_msg'] = (
-            f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
-            f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
-         )
+   is_admin = smuser_limit_check in locker_config.ADMIN_USERNAME
+   config['is_admin'] = is_admin
+   existing_instances = utils.getLockerInstances(creator=smuser_limit_check)
+   non_terminated = [i for i in existing_instances if i['State']['Name'] != 'terminated']
+   max_servers = locker_config.MAX_SERVERS_PER_USER
+   if len(non_terminated) >= max_servers:
+      config['at_server_limit'] = True
+      config['server_limit_msg'] = (
+         f"You have {len(non_terminated)} server(s) (limit is {max_servers}). "
+         f"Please <a href='locker.cgi?a=ec2_portal'>terminate existing servers</a> before creating a new one."
+      )
    # Pass Jira issue collectors and support email config to template (if configured)
    jira_collectors = getattr(locker_config, 'jira_collectors', None)
    if jira_collectors:
