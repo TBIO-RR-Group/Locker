@@ -806,6 +806,10 @@ def startEc2(aws_region='us-east-1',root_disk_size=100,ec2_instance_type='t2.mic
                 {
                     'ResourceType': 'instance',
                     'Tags': tagsArr
+                },
+                {
+                    'ResourceType': 'volume',
+                    'Tags': tagsArr
                 }
             ]
         )

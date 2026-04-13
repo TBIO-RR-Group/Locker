@@ -95,7 +95,7 @@ locker_services:
   ## for their instance type selection. Applies to all users including admins.
   LARGE_INSTANCE_COST_THRESHOLD: 2.0
 
-  ## Extra tags that will be added to the tags of started EC2 instances
+  ## Extra tags that will be added to the tags of started EC2 instances and their EBS volumes
   ## as key-value pairs.
   ## Example:
   ##    EXTRA_TAGS:
