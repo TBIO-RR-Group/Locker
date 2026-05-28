@@ -370,6 +370,23 @@ locker:
   ## running at same time, they'll be warned
   MAX_RECOMMENDED_RUNNING_CONTAINERS: 2
 
+  ## Bind mounts from Docker host into started containers.
+  ## Each entry specifies a host path (source) and container path (target).
+  ## - source: Path on the Docker host to bind-mount into the container.
+  ##   Use __WORK_ID__ placeholder for a per-container unique directory.
+  ## - target: Path inside the container where the source will be mounted.
+  ## - create: If true, Locker will create the directory on the host if it
+  ##   doesn't exist (with mode 777). If the directory cannot be created or
+  ##   doesn't exist and create is false, the mount is silently skipped.
+  ## Set to empty/null to disable.
+  container_bind_mounts:
+    - source: "/home01/ec2-user/work/__WORK_ID__"
+      target: "/home/rr_user/work"
+      create: true
+    - source: "/home01/ec2-user/work/shared"
+      target: "/home/rr_user/work-shared"
+      create: true
+
   ## Display apps (i.e., RStudio, Jupyter, VScode, etc.)
   ## in an iFrame (True), or directly in the browser window (False).
   appsInIframe: True

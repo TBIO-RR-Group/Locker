@@ -7,6 +7,7 @@
 .service-status-ready { color: green; font-weight: bold; }
 .service-status-starting { color: orange; font-weight: bold; }
 .service-status-stopped { color: red; font-weight: bold; }
+#terminate-modal label, #terminate-all-modal label { font-weight: normal; cursor: pointer; }
 </style>
 {% endblock %}
 
@@ -26,8 +27,7 @@
             All</a></li>
       <li><a href="{{ url_for('all_containers_action') + '?action=restart' }}"
             onclick="showSpinner(); return true;">Restart All</a></li>
-      <li><a href="{{ url_for('all_containers_action') + '?action=terminate' }}"
-            onclick='if (confirm("Are you sure you want to terminate all containers?")) { showSpinner(); return(true); } else { return false; }'>Terminate
+      <li><a href="#" onclick="$('#terminate-all-modal').modal('show'); return false;">Terminate
             All</a></li>
    </ul>
 </div>
@@ -51,6 +51,7 @@
             <th data-column-id="main_app">Primary Application</th>
             <th data-column-id="vscode">VSCode</th>
             <th data-column-id="custom_ports">Custom Ports</th>
+            <th data-column-id="has_work_dir" data-visible="false">HasWorkDir</th>
          </tr>
       </thead>
       <tbody>
@@ -68,6 +69,7 @@
             <td>{{ container.mainAppLink }}</td>
             <td>{{ container.vscodeLink }}</td>
             <td>{{ container.customPortsLink }}</td>
+            <td>{{ container.hasWorkDir }}</td>
          </tr>
          {% endfor %}
          {% endif %}
@@ -75,7 +77,80 @@
    </table>
 </div>
 
+<div class="modal fade" id="terminate-modal" tabindex="-1" role="dialog">
+   <div class="modal-dialog" role="document">
+      <div class="modal-content">
+         <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            <h4 class="modal-title">Terminate Container</h4>
+         </div>
+         <div class="modal-body">
+            <p>Are you sure you want to terminate this container?</p>
+            <div id="terminate-purge-option">
+               <label><input type="checkbox" id="terminate-purge-checkbox"> Also delete this container's work directory (cannot be undone)</label>
+            </div>
+         </div>
+         <div class="modal-footer">
+            <button class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button class="btn btn-danger" id="terminate-confirm-btn">Terminate</button>
+         </div>
+      </div>
+   </div>
+</div>
+
+<div class="modal fade" id="terminate-all-modal" tabindex="-1" role="dialog">
+   <div class="modal-dialog" role="document">
+      <div class="modal-content">
+         <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            <h4 class="modal-title">Terminate All Containers</h4>
+         </div>
+         <div class="modal-body">
+            <p>Are you sure you want to terminate all containers?</p>
+            <div>
+               <label><input type="checkbox" id="terminate-all-purge-checkbox"> Also delete all work directories (cannot be undone)</label>
+            </div>
+         </div>
+         <div class="modal-footer">
+            <button class="btn btn-default" data-dismiss="modal">Cancel</button>
+            <button class="btn btn-danger" id="terminate-all-confirm-btn">Terminate All</button>
+         </div>
+      </div>
+   </div>
+</div>
+
+
 <script>
+
+   var terminateContainerId = null;
+
+   function showTerminateModal(containerId, hasWorkDir) {
+      terminateContainerId = containerId;
+      if (hasWorkDir === 'True') {
+         $('#terminate-purge-option').show();
+      } else {
+         $('#terminate-purge-option').hide();
+      }
+      $('#terminate-purge-checkbox').prop('checked', false);
+      $('#terminate-modal').modal('show');
+   }
+
+   $('#terminate-confirm-btn').on('click', function() {
+      var purge = $('#terminate-purge-checkbox').is(':checked') ? '1' : '0';
+      var url = "container-actions?actions=stop,remove&container=" + terminateContainerId + "&purge=" + purge;
+      $('#terminate-modal').modal('hide');
+      showSpinner();
+      window.location.href = url;
+   });
+
+   $('#terminate-all-confirm-btn').on('click', function() {
+      var purge = $('#terminate-all-purge-checkbox').is(':checked') ? '1' : '0';
+      var url = "{{ url_for('all_containers_action') }}?action=terminate&purge=" + purge;
+      $('#terminate-all-modal').modal('hide');
+      showSpinner();
+      window.location.href = url;
+   });
+
 
    $(document).ready(function () {
 
@@ -93,8 +168,8 @@
                   var link_ = "container-actions?actions=restart&container=" + row.id;
                   otherLink = "&nbsp;|&nbsp;<a href='" + link_ + "' onclick='showSpinner(); return(true);'>Restart</a>";
                }
-               var term_link_ = "container-actions?actions=stop,remove&container=" + row.id;
-               var retVal = "<a href='" + term_link_ + "' onclick='if (confirm(\"Are you sure you want to terminate the container?\")) { showSpinner(); return(true); } else { return false; }'>Terminate</a>" + otherLink;
+               var hasWorkDir = row.has_work_dir || '';
+               var retVal = "<a href='#' onclick='showTerminateModal(\"" + row.id + "\", \"" + hasWorkDir + "\"); return false;'>Terminate</a>" + otherLink;
                return (retVal);
             },
             "commitCont": function (column, row) {

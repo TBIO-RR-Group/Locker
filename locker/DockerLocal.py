@@ -5,6 +5,7 @@ import io
 import re
 import json
 import os
+import secrets
 import tarfile
 import tempfile
 import sys
@@ -155,6 +156,88 @@ def checkServiceHealth(contObj, service, port):
     except Exception as e:
         # On any error, assume service is not ready
         return False
+
+def generateWorkID():
+    """Generate an 8-character random hex string to uniquely identify a container's work directory."""
+    return secrets.token_hex(4)
+
+
+def prepareBindMounts(bindMountDefs, workID, hostRootPrefix='/host_root'):
+    """
+    Prepare container bind mounts from config definitions.
+
+    For each bind mount definition, substitutes the __WORK_ID__ placeholder,
+    creates directories (if create=True), and returns a list of (hostPath, containerPath)
+    tuples for mounts whose host directory exists.
+
+    Args:
+        bindMountDefs: List of dicts with keys: source, target, create (optional).
+        workID: The unique work ID for per-container directories.
+        hostRootPrefix: The path prefix to access the Docker host filesystem
+                        (Locker sees the host root at /host_root).
+
+    Returns:
+        List of (hostSourcePath, containerTargetPath) tuples for mounts that are ready.
+    """
+    if not bindMountDefs:
+        return []
+
+    ready_mounts = []
+    for mount_def in bindMountDefs:
+        source = mount_def.get('source', '')
+        target = mount_def.get('target', '')
+        create = mount_def.get('create', False)
+
+        if not source or not target:
+            continue
+
+        source = source.replace('__WORK_ID__', workID)
+        target = target.replace('__WORK_ID__', workID)
+
+        host_path_from_locker = hostRootPrefix + source
+
+        if create and not os.path.isdir(host_path_from_locker):
+            try:
+                os.makedirs(host_path_from_locker, mode=0o777, exist_ok=True)
+                os.chmod(host_path_from_locker, 0o777)
+            except Exception:
+                continue
+
+        if os.path.isdir(host_path_from_locker):
+            ready_mounts.append((source, target))
+
+    return ready_mounts
+
+
+def purgeWorkDir(workID, bindMountDefs, hostRootPrefix='/host_root'):
+    """
+    Remove the per-container work directory identified by workID.
+    Only removes directories whose source path contained the __WORK_ID__ placeholder.
+    The shared work directory (no __WORK_ID__) is never removed.
+
+    Returns True if purge succeeded (or nothing to purge), False on error.
+    """
+    import shutil
+
+    if not workID or not bindMountDefs:
+        return True
+
+    for mount_def in bindMountDefs:
+        source = mount_def.get('source', '')
+        if '__WORK_ID__' not in source:
+            continue
+
+        resolved_source = source.replace('__WORK_ID__', workID)
+        host_path_from_locker = hostRootPrefix + resolved_source
+
+        if os.path.isdir(host_path_from_locker):
+            try:
+                shutil.rmtree(host_path_from_locker)
+            except Exception:
+                return False
+
+    return True
+
 
 #This does basically the same thing as previous/old copyIntoContainer (except doesn't support pre-tarred dirs),
 #but in a different way. The reason I created this as follows. If you bind mount the host root (i.e. '/')
@@ -310,7 +393,7 @@ def copyFromContainer(contObj,src,dst,untarDst=True):
 
 #Run an image and set it up for use (mount /stash, home dir, etc.)
 def runContainer(docker_client, image, ports=None, environment=None, entrypoint=None, cap_add=['SYS_ADMIN','DAC_READ_SEARCH','NET_ADMIN','NET_RAW'],devices=['/dev/fuse'],security_opt=['apparmor:unconfined'],
-                 detach=True, tty=True, remove=False, labels=None,name=None, enableSiblingCont = False, enableGPU = False, hostRoot = None, hostUserUid = None, hostUserGid = None):
+                 detach=True, tty=True, remove=False, labels=None,name=None, enableSiblingCont = False, enableGPU = False, hostRoot = None, hostUserUid = None, hostUserGid = None, extraBindMounts = None):
     """
     Start a Docker container. docker_client is a docker-py client.
     image is the Docker image to use to start the container. The
@@ -319,12 +402,18 @@ def runContainer(docker_client, image, ports=None, environment=None, entrypoint=
     to start our containers. The host machine's root dir is
     also bind mounted into the container at /host_root. The
     started container's docker-py container object is returned.
+    extraBindMounts is an optional list of (hostPath, containerPath) tuples
+    for additional bind mounts (e.g. work directories).
     """
 
     #bind mount Docker host's root path (i.e. '/') into the container
     if utils.empty(hostRoot):
         hostRoot = utils.root_path()
     volumes = { hostRoot : { "bind": "/host_root", "mode": "rw" } }
+
+    if extraBindMounts:
+        for hostPath, containerPath in extraBindMounts:
+            volumes[hostPath] = { "bind": containerPath, "mode": "rw" }
 
     if enableSiblingCont:
         volumes["/var/run/docker.sock"] = { "bind": "/var/run/docker.sock", "mode": "rw" }

@@ -69,6 +69,7 @@ containerUserHomedir = config.containerUserHomedir
 containerUser = config.containerUser
 MAX_RECOMMENDED_RUNNING_CONTAINERS = config.MAX_RECOMMENDED_RUNNING_CONTAINERS
 appsInIframe = config.appsInIframe
+containerBindMounts = getattr(config, 'container_bind_mounts', None) or []
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--local_or_remote', help="Whether to run the app locally ('l') allowing only localhost connections, or remotely ('r') allowing internet connections.", type=str)
@@ -627,6 +628,8 @@ def getLockerContainers():
             pass
 
         curContObj.customPortsLink = ' | '.join(custom_ports_html_parts) if custom_ports_html_parts else '-'
+
+        curContObj.hasWorkDir = bool(curContObj.labels.get('locker.work_id', ''))
 
         if curContObj.status == "running":
             curRunningContainerCt = curRunningContainerCt + 1
@@ -1732,6 +1735,11 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
 
     labels['MAIN_APP'] = main_app
 
+    # Generate work ID and prepare bind mounts from config
+    workID = DockerLocal.generateWorkID()
+    labels['locker.work_id'] = workID
+    extraBindMounts = DockerLocal.prepareBindMounts(containerBindMounts, workID)
+
     if not utils.empty(vscode) and vscode == 'on':
         vscode = '_vscode'
         ports[vscodeContainerPort] = ""
@@ -1832,7 +1840,7 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
         contObj = DockerLocal.runContainer(docker_client, image=image, ports=ports, entrypoint=ep,environment=the_env,labels=labels,name=container_name,
                                            enableSiblingCont = not utils.empty(sibling_cont) and sibling_cont == 'on',
                                            enableGPU = not utils.empty(enable_gpu) and enable_gpu == 'on', hostRoot = os.getenv('DOCKER_HOST_ROOT'),
-                                           hostUserUid = set_hostUserUid, hostUserGid = set_hostUserGid)
+                                           hostUserUid = set_hostUserUid, hostUserGid = set_hostUserGid, extraBindMounts = extraBindMounts)
         contObj.reload()
     except Exception as e:
         raise Exception('Error starting (and reloading attrs for) the new Docker container in start_containerFunc: ' + str(e))
@@ -1856,13 +1864,18 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
             DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
         
         # Copy supervisord config directly from memory
-        DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=supervisord_conf_content.encode(), 
+        DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=supervisord_conf_content.encode(),
                                      dst=f'/etc/supervisor/conf.d/{supervisord_conf_file_name}')
         cmd=f'chown {containerUser}:{containerUser} /etc/supervisor/conf.d/{supervisord_conf_file_name}'
         DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
         cmd=f'chmod 0644 /etc/supervisor/conf.d/{supervisord_conf_file_name}'
         DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=True)
-        
+
+        # Ensure containerUser owns the bind-mounted work directories
+        for _, containerPath in extraBindMounts:
+            cmd=f'chown {containerUser}:{containerUser} {containerPath}'
+            DockerLocal.execRunWrap(contObj,cmd,raiseExceptionIfExitCodeNonZero=False)
+
     except Exception as e:
         raise Exception('Error copying files into the new Docker container in start_containerFunc: ' + str(e))
 
@@ -2167,8 +2180,12 @@ def all_containers_action():
                 return render_template('error.html');
         elif action == 'terminate':
             try:
+                workID = curContObj.labels.get('locker.work_id', '')
                 DockerLocal.execContainerAction(curContObj, 'stop')
                 DockerLocal.execContainerAction(curContObj, 'remove')
+                purge = request.args.get('purge')
+                if not utils.empty(purge) and purge == '1' and workID:
+                    DockerLocal.purgeWorkDir(workID, containerBindMounts)
             except Exception as e:
                 fullMsg = utils.genShowHideMessage(f'Error performing {action} in all_containers_action',": Details: " + str(e),"allContActErr3b")
                 flash(fullMsg, "error")
@@ -2184,6 +2201,7 @@ def container_actions():
 
     container = request.args.get('container')
     actions = request.args.get('actions')
+    purge = request.args.get('purge')
 
     if utils.empty(actions):
         fullMsg = utils.genShowHideMessage('Error, no actions specified in container_actions',"contActionsErr1")
@@ -2191,9 +2209,11 @@ def container_actions():
         return render_template('error.html');
 
     contObj = None
+    workID = None
     try:
         docker_client = DockerLocal.getDockerClient()
         contObj = docker_client.containers.get(container)
+        workID = contObj.labels.get('locker.work_id', '')
     except Exception as e:
         fullMsg = utils.genShowHideMessage('Error connecting to Docker and getting container in container_actions',": Details: " + str(e),"contActionsErr2")
         flash(fullMsg, "error")
@@ -2210,6 +2230,11 @@ def container_actions():
             fullMsg = utils.genShowHideMessage(f'Error performing action {curAction} in container_actions',": Details: " + str(e),"contActionsErr3")
             flash(fullMsg, "error")
             return render_template('error.html');
+
+    # Purge per-container work directory if requested and container was removed
+    if not utils.empty(purge) and purge == '1' and workID and 'remove' in actionsList:
+        if not DockerLocal.purgeWorkDir(workID, containerBindMounts):
+            flash("Warning: container was removed but work directory could not be fully purged.", "warning")
 
     return redirect(url_for('home'))
 
