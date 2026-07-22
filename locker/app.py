@@ -61,6 +61,7 @@ useEcrFlag = config.useEcrFlag
 proxyHandling = config.proxyHandling
 configCheckProxyServer = config.checkCorpNetworkVPNServer
 configProxies = config.proxies
+configProxyCACertFile = getattr(config, 'proxyCACertFile', '')
 locker_admins = config.locker_admins
 if locker_admins is None:
     locker_admins = []
@@ -1886,6 +1887,14 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
     if proxyHandling == 'set' or (proxyHandling == 'check' and utils.checkOnVpnOrOrgOrCorporateNetwork(host=configCheckProxyServer)):
         print("config.proxyHandling == " + proxyHandling + ", setting proxies in container.")
         setProxiesScriptCmd = utils.setProxiesScript(proxiesHash=configProxies)
+        ## If a proxy TLS-interception CA is configured (see config.yml: proxyCACertFile),
+        ## make Node/Bun-based tools (e.g. Claude Code) trust it by exporting
+        ## NODE_EXTRA_CA_CERTS alongside the proxy env vars. Those tools do not read the OS
+        ## trust store, so installing the CA system-wide (below) is not enough for them.
+        proxyCaInContainer = '/etc/locker-proxy-ca.pem'
+        installProxyCa = (not utils.empty(configProxyCACertFile)) and os.path.isfile(configProxyCACertFile)
+        if installProxyCa:
+            setProxiesScriptCmd = setProxiesScriptCmd + f'export NODE_EXTRA_CA_CERTS={proxyCaInContainer}' + "\n"
         DockerLocal.copyIntoContainer2(contObj=contObj,srcContent=setProxiesScriptCmd.encode(), dst=f'{containerUserHomedir}/.proxyEnv')
         chownProxyEnvCmd = f"/bin/sh -c \"chown {containerUser} {containerUserHomedir}/.proxyEnv\""
         contStartupScriptTxt = DockerLocal.containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = chownProxyEnvCmd, asUser = None, notOnRestartFlag = False)
@@ -1895,6 +1904,25 @@ def start_containerFunc(image, main_app, container_name, vscode, networkSshfsMou
         theCmd = f'/bin/sh -c \'grep -qxF "{lineToAdd}" {containerUserHomedir}/.bashrc || ({echoCmdTxt})\''
         contStartupScriptTxt = DockerLocal.containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = theCmd, asUser = None, notOnRestartFlag = True)
         contStartupScriptTxt = DockerLocal.containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = lineToAdd, asUser = None, notOnRestartFlag = False)
+        ## Copy the proxy's TLS-interception CA into the container and install it into the
+        ## OS trust store so HTTPS through the proxy validates for system tools
+        ## (curl/git/python) instead of failing with "unable to get local issuer
+        ## certificate". Handles both Debian- (update-ca-certificates) and RHEL-family
+        ## (update-ca-trust) images. NODE_EXTRA_CA_CERTS (set in .proxyEnv above) covers
+        ## Node/Bun tools that ignore this store.
+        if installProxyCa:
+            with open(configProxyCACertFile, 'rb') as caFileObj:
+                caCertBytes = caFileObj.read()
+            DockerLocal.copyIntoContainer2(contObj=contObj, srcContent=caCertBytes, dst=proxyCaInContainer)
+            installProxyCaCmd = (
+                "/bin/sh -c 'CA=" + proxyCaInContainer + "; "
+                "if command -v update-ca-certificates >/dev/null 2>&1; then "
+                "cp \"$CA\" /usr/local/share/ca-certificates/locker-proxy-ca.crt && update-ca-certificates; "
+                "elif command -v update-ca-trust >/dev/null 2>&1; then "
+                "cp \"$CA\" /etc/pki/ca-trust/source/anchors/locker-proxy-ca.pem && update-ca-trust extract; "
+                "fi'"
+            )
+            contStartupScriptTxt = DockerLocal.containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = installProxyCaCmd, asUser = None, notOnRestartFlag = True)
     elif proxyHandling == 'unset':
         print("config.proxyHandling == " + proxyHandling + ", no proxies will be set in container.")
         for curEnv in ['HTTP_PROXY','HTTPS_PROXY','FTP_PROXY','NO_PROXY','http_proxy','https_proxy','ftp_proxy','no_proxy']:
