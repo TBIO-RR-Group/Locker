@@ -275,6 +275,25 @@ locker:
     ftp_proxy: 'http://proxy.example.com'
     no_proxy: '.example.com,178.113.146.111,localhost'
 
+  ## Optional: absolute path (INSIDE the Locker service container) to a PEM file
+  ## holding the CA certificate your proxy presents when it does TLS interception
+  ## ("SSL inspection"). When proxies are applied to a started container (see
+  ## proxyHandling), this CA is installed into that container's OS trust store AND
+  ## exported via NODE_EXTRA_CA_CERTS, so HTTPS through the proxy validates for both
+  ## system tools (curl/git/python) and Node/Bun-based tools (e.g. Claude Code, which
+  ## do NOT read the OS trust store). Without it, such traffic fails with
+  ## "unable to get local issuer certificate".
+  ## Use the self-signed ROOT CA here, NOT an intermediate. Two reasons:
+  ##   (1) Some tools reject a trusted intermediate outright. OpenSSL/curl will accept an
+  ##       intermediate as a trust anchor ("partial chain"), but Node/Bun-based tools
+  ##       (e.g. Claude Code) require the chain to terminate at a trusted self-signed
+  ##       ROOT, so trusting only an intermediate fails for them entirely.
+  ##   (2) The root survives intermediate rotation, so trust keeps working when the
+  ##       proxy's intermediate cert is renewed/replaced (roots live for many years).
+  ## Place the PEM under locker/files/certs/ (baked into this image, git-ignored) and
+  ## reference it here as /locker/files/certs/<file>.pem. Leave '' to disable.
+  proxyCACertFile: ''
+
   ## Certain actions or capabilities (e.g. mounting of specific network drives, etc.)
   ## are only available when you are running Locker on a VPN or organization/corporate
   ## network. So Locker needs a way to determine that, and it does that by pinging a
