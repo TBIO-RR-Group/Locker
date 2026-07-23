@@ -4,3 +4,5 @@
 *__pycache__*
 locker_services/download/*
 config.yml
+locker/files/certs/*.pem
+locker/files/certs/*.crt
