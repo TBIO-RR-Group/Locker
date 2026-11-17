@@ -666,8 +666,11 @@ def containerStartup(contObj,sshPubKey=None, sshPubKeyFile=None, sshPrivKey=None
                 userAtHostName = curSshfsMount[5]
                 vpnOrCorpNetworkRequiredToMount = curSshfsMount[6]
                 if not vpnOrCorpNetworkRequiredToMount or onVpnOrCorpNetwork:
-                    cmd=f'mkdir -p {contMountPoint}'
-                    contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = config.containerUser, notOnRestartFlag = False)
+                    # Create a missing mount point as root, since its parent may not be writable by the
+                    # container user (e.g. /pool/results), then hand it over. An existing directory is
+                    # left alone: a chown on a live sshfs mount would be forwarded to the remote.
+                    cmd=f'[ -d {contMountPoint} ] || {{ mkdir -p {contMountPoint} && chown {config.containerUser}:{config.containerUser} {contMountPoint}; }}'
+                    contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = None, notOnRestartFlag = False)
                     cmd=f'smount -i {config.containerUserHomedir}/.ssh/id_privkey_{user} -m {contMountPoint} -r {userAtHostName}@{hostname}:{pathAtHostname}'
                     contStartupScriptTxt = containerStartupScript(startupScriptTxt = contStartupScriptTxt, commandToAdd = cmd, asUser = config.containerUser, notOnRestartFlag = False)
 
